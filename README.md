@@ -27,6 +27,3 @@ This project is licensed under the MIT License - see the LICENSE.md file for det
 
 ### Acknowledgments
 I thank Deepak A. Kaji for laying the groundwork of this implementation in "An attention based deep learning model of clinical events in the intensive care unit"
-
-### Github
-https://github.com/steveXhunter/mimic-lstm/tree/pytorch
