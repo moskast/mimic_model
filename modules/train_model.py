@@ -15,7 +15,7 @@ from modules.pickle_utils import load_pickle, get_pickle_path
 
 
 def return_loaded_model(model_name):
-    return torch.load("./output/saved_models/best_models/{0}.h5".format(model_name))
+    return torch.load("./output/models/best_models/{0}.h5".format(model_name))
 
 
 def update(model, loss_function, data_loader, optimizer, device='cpu'):
@@ -48,7 +48,7 @@ def evaluate(model, metric, data_loader, device='cpu'):
 
 
 def train_model(model_name, target='MI', n_percentage=1.0,
-                epochs=10, batch_size=32, lr=0.001, data_path='pickled_data_sets', seed=42):
+                epochs=13, batch_size=16, lr=0.001, data_path='pickled_data_sets', seed=42):
     """
 
   Training the model using parameter inputs
@@ -63,10 +63,10 @@ def train_model(model_name, target='MI', n_percentage=1.0,
 
   """
     torch.manual_seed(seed)
-    base_dir = './output/saved_models'
+    base_dir = './output/models'
     checkpoint_dir = f'{base_dir}/best_models'
     final_model_dir = f'{base_dir}/fully_trained_models'
-    logs_dir = f'{base_dir}/logs'
+    logs_dir = f'./output/logs'
     for directory in [checkpoint_dir, final_model_dir, logs_dir]:
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -113,31 +113,3 @@ def train_model(model_name, target='MI', n_percentage=1.0,
 
     if device != 'cpu':
         torch.cuda.empty_cache()
-
-
-def main(targets, percentages, seed=42):
-    """
-
-    Args:
-        seed: random seed for pytorch
-        create_data: If the data should be create, False by default
-
-    Returns:
-
-    """
-
-    epochs = 13
-    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-    torch.manual_seed(seed)
-    print(f'Training Models using {device}')
-    for target in targets:
-        print(f'\nTraining {target}')
-        for percentage in percentages:
-            p = int(percentage * 100)
-            model_name = f'mimic_{target}_{p}_percent'
-            train_model(model_name=model_name, epochs=epochs, device=device,
-                        target=target, n_percentage=percentage)
-
-            torch.cuda.empty_cache()
-            print(f'\rFinished training on {percentage * 100}% of data')
-    print("Program finished")
