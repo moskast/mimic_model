@@ -63,7 +63,7 @@ class MimicPreProcessor(object):
 
         return df, feature_names
 
-    def pad_and_format_data(self, df, time_steps=14, pad_value=0):
+    def pad_and_format_data(self, df, time_steps=14, pad_value=0, lower_bound=1):
         df = pad_sequences(df, 1, time_steps, pad_value=pad_value, id_col=self.id_col)
         df = df.drop(columns=[self.id_col])
         whole_data = df.values
@@ -144,11 +144,11 @@ class MimicPreProcessor(object):
                 data_validation, target_validation, data_validation_mask, targets_validation_mask,
                 data_test, targets_test, data_test_mask, targets_test_mask)
 
-    def pre_process_and_save_files(self, target, output_folder='./output/pickled_data_sets/unspecified_mimic'):
+    def pre_process_and_save_files(self, target, time_steps, output_folder='./output/pickled_data_sets/unspecified_mimic'):
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
         df, feature_names = self.create_target(target)
-        whole_data, mask = self.pad_and_format_data(df)
+        whole_data, mask = self.pad_and_format_data(df, time_steps=time_steps, lower_bound=5)
         (data_train, targets_train, data_train_mask, targets_train_mask,
          data_validation, target_validation, data_validation_mask, targets_validation_mask,
          data_test, targets_test, data_test_mask, targets_test_mask) = self.create_learning_sets(whole_data, mask)
