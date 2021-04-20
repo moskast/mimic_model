@@ -3,7 +3,7 @@ import os
 import numpy as np
 import pandas as pd
 
-from modules.pad_sequences import pad_sequences, z_score_normalize
+from modules.pad_sequences import pad_sequences, z_score_normalize, filter_sequences
 from modules.pickle_utils import dump_pickle, get_pickle_path
 
 
@@ -26,6 +26,11 @@ class MimicPreProcessor(object):
         self.random_seed = random_seed
 
     def create_target(self, target):
+        """
+        Given a dataframe creates a specified target for it as well as deleting columns that make the task trivial
+        @param target: One out of three targets to create [MI, SEPSIS, VANCOMYCIN]
+        @return: dataframe with target column as well as a list of feature names
+        """
         df = self.parsed_mimic.copy()
         # Delete features that make the task trivial
         toss = ['subject_id', 'yob', 'admityear']
@@ -54,8 +59,8 @@ class MimicPreProcessor(object):
 
         df = df.select_dtypes(exclude=['object'])
         feature_names = [i for i in list(df.columns) if i not in toss]
+        df = df[feature_names]
         feature_names.remove(target)
-        df = df[feature_names + [target]]
 
         # Only remove id_col from features because it is needed later
         feature_names.remove(self.id_col)
@@ -64,7 +69,8 @@ class MimicPreProcessor(object):
         return df, feature_names
 
     def pad_and_format_data(self, df, time_steps=14, pad_value=0, lower_bound=1):
-        df = pad_sequences(df, 1, time_steps, pad_value=pad_value, id_col=self.id_col)
+        df = filter_sequences(df, 1, time_steps, id_col=self.id_col)
+        #df = pad_sequences(df, time_steps, pad_value=pad_value, id_col=self.id_col)
         df = df.drop(columns=[self.id_col])
         whole_data = df.values
         whole_data = whole_data.reshape(int(whole_data.shape[0] / time_steps), time_steps, whole_data.shape[1])
@@ -76,7 +82,7 @@ class MimicPreProcessor(object):
         # restore 3D shape to boolmatrix for consistency
         mask = np.isnan(whole_data)
         whole_data[mask] = pad_value
-        print("Padded and formated data frame")
+        print("Padded and formatted data frame")
         return whole_data, mask
 
     def create_learning_sets(self, whole_data, mask, train_percentage=0.7, val_percentage=0.1, undersample=True):
@@ -144,7 +150,7 @@ class MimicPreProcessor(object):
                 data_validation, target_validation, data_validation_mask, targets_validation_mask,
                 data_test, targets_test, data_test_mask, targets_test_mask)
 
-    def pre_process_and_save_files(self, target, time_steps, output_folder='./output/pickled_data_sets/unspecified_mimic'):
+    def pre_process_and_save_files(self, target, time_steps, output_folder):
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
         df, feature_names = self.create_target(target)

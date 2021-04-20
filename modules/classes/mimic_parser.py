@@ -23,7 +23,7 @@ def create_time_feature(series, window_size=24):
 
 class MimicParser(object):
     """
-    This class structures MIMIC and builds features, then makes 24 hour windows
+    This class processes a MIMIC database into a single file
     """
 
     def __init__(self, mimic_folder_path, folder, file_name, id_column, label_column, mimic_version=4, window_size=24):
@@ -88,7 +88,7 @@ class MimicParser(object):
 
     def create_day_blocks(self):
         """
-        Uses pandas to take shards and build them out
+        Create the time feature as well as std, min and max
         """
 
         reversed_feature_dict = self.pid.get_reversed_feature_dictionary()
@@ -165,7 +165,7 @@ class MimicParser(object):
 
     def add_admissions_columns(self):
         """
-        Add demographic columns to create_day_blocks
+        Adds a field whether a person is black (TODO why???)
         """
 
         df = pd.read_csv(f'{self.mimic_folder_path}/ADMISSIONS.csv')
@@ -188,7 +188,7 @@ class MimicParser(object):
 
     def add_patient_columns(self, hadm_dict):
         """
-        Add demographic columns to create_day_blocks
+        Add gender columns
         @param hadm_dict:
         """
         df = pd.read_csv(self.mimic_folder_path + '/PATIENTS.csv')
@@ -217,7 +217,7 @@ class MimicParser(object):
 
     def clean_prescriptions(self):
         """
-        Add prescriptions
+        Only keep relevant prescriptions
         """
         prescriptions = self.pid.get_prescriptions(self.mimic_version)
         prescriptions.columns = prescriptions.columns.str.lower()
@@ -236,7 +236,7 @@ class MimicParser(object):
 
     def add_prescriptions(self):
         """
-        Add prescriptions
+        Add drug prescriptions
         """
         file_name = 'PRESCRIPTIONS_reduced'
         if self.mimic_version == 3:
@@ -294,7 +294,7 @@ class MimicParser(object):
 
     def add_icd_infect(self):
         """
-        Add icd infect
+        Add icd infect column
         """
         df_icd = pd.read_csv(self.mimic_folder_path + '/PROCEDURES_ICD.csv')
         df_icd.columns = df_icd.columns.str.lower()
@@ -317,7 +317,7 @@ class MimicParser(object):
 
     def add_notes(self):
         """
-        Add notes
+        Add features for note events
         """
         df = pd.read_csv(self.mimic_folder_path + '/NOTEEVENTS.csv')
         df.columns = df.columns.str.lower()
@@ -341,7 +341,7 @@ class MimicParser(object):
 
     def perform_full_parsing(self):
         """
-        Call all methods of self
+        Call all methods of self to perform the full pipeline on a mimic db
         """
         self.reduce_total()
         hadm_dict = self.create_day_blocks()
