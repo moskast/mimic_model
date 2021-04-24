@@ -76,7 +76,7 @@ def train_model(model_name, target='MI', n_percentage=1.0,
     training_data = load_pickle(get_pickle_path('train_data', target, data_path))
     training_targets = load_pickle(get_pickle_path('train_targets', target, data_path))
     validation_data = load_pickle(get_pickle_path('validation_data', target, data_path))
-    validation_targets = load_pickle(get_pickle_path('validation_target', target, data_path))
+    validation_targets = load_pickle(get_pickle_path('validation_targets', target, data_path))
     number_feature_cols = training_data.shape[2]
 
     # N_Samples x Seq_Length x N_Features

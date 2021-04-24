@@ -3,7 +3,7 @@ import os
 import numpy as np
 import pandas as pd
 
-from modules.pad_sequences import pad_sequences, z_score_normalize, filter_sequences
+from modules.pad_sequences import pad_sequences, filter_sequences
 from modules.pickle_utils import dump_pickle, get_pickle_path
 
 
@@ -68,9 +68,40 @@ class MimicPreProcessor(object):
 
         return df, feature_names
 
-    def pad_and_format_data(self, df, time_steps=14, pad_value=0, lower_bound=1):
-        df = filter_sequences(df, 1, time_steps, id_col=self.id_col)
-        #df = pad_sequences(df, time_steps, pad_value=pad_value, id_col=self.id_col)
+    def split_and_normalize_data(self, df, train_percentage=0.7, val_percentage=0.1, undersample=True):
+        keys = df[self.id_col].sample(frac=1).unique()
+        train_bound = int(train_percentage * len(keys))
+        val_bound = int((train_percentage + val_percentage) * len(keys))
+        train_keys = keys[:train_bound]
+        val_keys = keys[train_bound:val_bound]
+        test_keys = keys[val_bound:]
+        train_data = df[df[self.id_col].isin(train_keys)]
+        val_data = df[df[self.id_col].isin(val_keys)]
+        test_data = df[df[self.id_col].isin(test_keys)]
+
+        if undersample:
+            positive_rows = train_data.iloc[:, -1] == 1
+            pos_ids = np.unique(train_data[positive_rows][self.id_col])
+            np.random.shuffle(pos_ids)
+            # Because the first check checks for positive labels per day most ids will also show up here
+            # That is why the second term is needed
+            neg_ids = np.unique(train_data[~positive_rows & ~(train_data[self.id_col].isin(pos_ids))][self.id_col])
+            np.random.shuffle(neg_ids)
+            length = min(pos_ids.shape[0], neg_ids.shape[0])
+            total_ids = np.hstack([pos_ids[0:length], neg_ids[0:length]])
+            np.random.shuffle(total_ids)
+            train_data = df[df[self.id_col].isin(total_ids)]
+            print('Balanced training data by undersampling')
+
+        means = train_data.iloc[:, :-1].mean(axis=0)
+        stds = train_data.iloc[:, :-1].std(axis=0)
+        train_data.iloc[:, :-1] = (train_data.iloc[:, :-1] - means) / stds
+        val_data.iloc[:, :-1] = (val_data.iloc[:, :-1] - means) / stds
+        test_data.iloc[:, :-1] = (test_data.iloc[:, :-1] - means) / stds
+        return train_data, val_data, test_data
+
+    def pad_data(self, df, time_steps, pad_value=0):
+        df = pad_sequences(df, time_steps, pad_value=pad_value, id_col=self.id_col)
         df = df.drop(columns=[self.id_col])
         whole_data = df.values
         whole_data = whole_data.reshape(int(whole_data.shape[0] / time_steps), time_steps, whole_data.shape[1])
@@ -78,101 +109,40 @@ class MimicPreProcessor(object):
         # creating a second order bool matrix which keeps track of padded entries
         mask = (~whole_data.any(axis=2))
         whole_data[mask] = np.nan
-        whole_data = z_score_normalize(whole_data)
         # restore 3D shape to boolmatrix for consistency
         mask = np.isnan(whole_data)
         whole_data[mask] = pad_value
-        print("Padded and formatted data frame")
+        print("Padded data frame")
         return whole_data, mask
 
-    def create_learning_sets(self, whole_data, mask, train_percentage=0.7, val_percentage=0.1, undersample=True):
-        np.random.seed(self.random_seed)
-        val_percentage += train_percentage
-
-        n_datapoints = whole_data.shape[0]
-        permutation = np.random.permutation(n_datapoints)
-        whole_data = whole_data[permutation]
-        mask = mask[permutation]
-
-        print(whole_data.shape)
-        input_data = whole_data[:, :-1, 0:-1]
+    def pickle_data(self, whole_data, mask, name, target, output_folder):
+        # Because the targets are for the same day shift the targets by one and ignore the last day
+        # because no targets exist
+        input_data = whole_data[:, :-1, :-1]
         targets = whole_data[:, 1:, -1]
-        input_data_mask = mask[:, :-1, 0:-1]
+        targets = targets.reshape(targets.shape[0], targets.shape[1], 1)
+        input_data_mask = mask[:, :-1, :-1]
         targets_mask = mask[:, 1:, -1]
+        targets_mask = targets_mask.reshape(targets_mask.shape[0], targets_mask.shape[1], 1)
 
         assert input_data.shape == input_data_mask.shape
         assert targets.shape == targets_mask.shape
-        print(input_data.shape)
-        print(targets.shape)
 
-        data_train = input_data[0:int(train_percentage * n_datapoints)]
-        targets_train = targets[0:int(train_percentage * n_datapoints)]
-        targets_train = targets_train.reshape(targets_train.shape[0], targets_train.shape[1], 1)
-        data_train_mask = input_data_mask[0:int(train_percentage * n_datapoints)]
-        targets_train_mask = targets_mask[0:int(train_percentage * n_datapoints)]
-        targets_train_mask = targets_train_mask.reshape(targets_train_mask.shape[0], targets_train_mask.shape[1], 1)
+        dump_pickle(input_data, get_pickle_path(f'{name}_data', target, output_folder))
+        dump_pickle(targets, get_pickle_path(f'{name}_targets', target, output_folder))
+        dump_pickle(input_data_mask, get_pickle_path(f'{name}_data_mask', target, output_folder))
+        dump_pickle(targets_mask, get_pickle_path(f'{name}_targets_mask', target, output_folder))
 
-        data_validation = input_data[int(train_percentage * n_datapoints):int(val_percentage * n_datapoints)]
-        target_validation = targets[int(train_percentage * n_datapoints):int(val_percentage * n_datapoints)]
-        target_validation = target_validation.reshape(target_validation.shape[0], target_validation.shape[1], 1)
-        data_validation_mask = input_data_mask[int(train_percentage * n_datapoints):int(val_percentage * n_datapoints)]
-        targets_validation_mask = targets_mask[int(train_percentage * n_datapoints):int(val_percentage * n_datapoints)]
-        targets_validation_mask = targets_validation_mask.reshape(targets_validation_mask.shape[0],
-                                                                  targets_validation_mask.shape[1], 1)
-
-        data_test = input_data[int(val_percentage * n_datapoints)::]
-        targets_test = targets[int(val_percentage * n_datapoints)::]
-        targets_test = targets_test.reshape(targets_test.shape[0], targets_test.shape[1], 1)
-        data_test_mask = input_data_mask[int(val_percentage * n_datapoints)::]
-        targets_test_mask = targets_mask[int(val_percentage * n_datapoints)::]
-        targets_test_mask = targets_test_mask.reshape(targets_test_mask.shape[0], targets_test_mask.shape[1], 1)
-
-        print("Created Matrices")
-
-        if undersample:
-            whole_data_train = np.concatenate([data_train, targets_train], axis=2)
-            pos_ind = np.unique(np.where((whole_data_train[:, :, -1] == 1).any(axis=1))[0])
-            np.random.shuffle(pos_ind)
-            neg_ind = np.unique(np.where(~(whole_data_train[:, :, -1] == 1).any(axis=1))[0])
-            np.random.shuffle(neg_ind)
-            length = min(pos_ind.shape[0], neg_ind.shape[0])
-            total_ind = np.hstack([pos_ind[0:length], neg_ind[0:length]])
-            np.random.shuffle(total_ind)
-            data_train = whole_data_train[total_ind, :, 0:-1]
-            targets_train = whole_data_train[total_ind, :, -1]
-            targets_train = targets_train.reshape(targets_train.shape[0], targets_train.shape[1], 1)
-
-            data_train_mask = data_train_mask[total_ind]
-            targets_train_mask = targets_train_mask[total_ind]
-            print('Balanced training data')
-
-        return (data_train, targets_train, data_train_mask, targets_train_mask,
-                data_validation, target_validation, data_validation_mask, targets_validation_mask,
-                data_test, targets_test, data_test_mask, targets_test_mask)
-
-    def pre_process_and_save_files(self, target, time_steps, output_folder):
+    def pre_process_and_save_files(self, target, n_time_steps, output_folder):
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
         df, feature_names = self.create_target(target)
-        whole_data, mask = self.pad_and_format_data(df, time_steps=time_steps, lower_bound=5)
-        (data_train, targets_train, data_train_mask, targets_train_mask,
-         data_validation, target_validation, data_validation_mask, targets_validation_mask,
-         data_test, targets_test, data_test_mask, targets_test_mask) = self.create_learning_sets(whole_data, mask)
-
         dump_pickle(feature_names, get_pickle_path('features', target, output_folder))
+        df = filter_sequences(df, 2, n_time_steps, id_col=self.id_col)
+        train, val, test = self.split_and_normalize_data(df, train_percentage=0.7, val_percentage=0.1, undersample=True)
 
-        dump_pickle(data_train, get_pickle_path('train_data', target, output_folder))
-        dump_pickle(targets_train, get_pickle_path('train_targets', target, output_folder))
-        dump_pickle(data_train_mask, get_pickle_path('train_data_mask', target, output_folder))
-        dump_pickle(targets_train_mask, get_pickle_path('train_targets_mask', target, output_folder))
+        for dataset, name in [(train, 'train'), (val, 'validation'), (test, 'test')]:
+            whole_data, mask = self.pad_data(dataset, time_steps=n_time_steps)
+            self.pickle_data(whole_data, mask, name, target, output_folder)
 
-        dump_pickle(data_validation, get_pickle_path('validation_data', target, output_folder))
-        dump_pickle(target_validation, get_pickle_path('validation_target', target, output_folder))
-        dump_pickle(data_validation_mask, get_pickle_path('validation_data_mask', target, output_folder))
-        dump_pickle(targets_validation_mask, get_pickle_path('validation_targets_mask', target, output_folder))
-
-        dump_pickle(data_test, get_pickle_path('test_data', target, output_folder))
-        dump_pickle(targets_test, get_pickle_path('test_targets', target, output_folder))
-        dump_pickle(data_test_mask, get_pickle_path('test_data_mask', target, output_folder))
-        dump_pickle(targets_test_mask, get_pickle_path('test_targets_mask', target, output_folder))
         print(f'Saved files to folder: {output_folder}')

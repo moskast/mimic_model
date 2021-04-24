@@ -6,6 +6,7 @@ import torch
 
 
 def filter_sequences(df, lb, time_steps, id_col='hadm_id'):
+    print("Start filtering procedure")
     df_grouped = df.groupby(id_col)
     if df_grouped.size().max() > time_steps:
         df = df_grouped.apply(lambda group: group[:time_steps]).reset_index(drop=True)
@@ -26,22 +27,6 @@ def pad_sequences(df, time_steps, pad_value, id_col='hadm_id'):
         axis=0)).reset_index(drop=True)
     print('There are {0} rows in the df after padding'.format(len(df)))
     return df
-
-
-def z_score_normalize(matrix):
-    ''' Performs Z Score Normalization for 3rd order tensors
-        matrix should be (batchsize, time_steps, features)
-        Padded time steps should be masked with np.nan '''
-
-    x_matrix = matrix[:, :, 0:-1]
-    y_matrix = matrix[:, :, -1]
-    y_matrix = y_matrix.reshape(y_matrix.shape[0], y_matrix.shape[1], 1)
-    means = np.nanmean(x_matrix, axis=(0, 1))
-    stds = np.nanstd(x_matrix, axis=(0, 1))
-    x_matrix = x_matrix - means
-    x_matrix = x_matrix / stds
-    matrix = np.concatenate([x_matrix, y_matrix], axis=2)
-    return matrix
 
 
 def get_seq_length_from_padded_seq(sequence):

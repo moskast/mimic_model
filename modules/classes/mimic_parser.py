@@ -17,7 +17,17 @@ def map_dict(elem, dictionary):
 
 
 def create_time_feature(series, window_size=24):
+    """
+    Transform time string of format "DD:MM:YY HH:MM:SS" into "DD:MM:YY {Number}"
+    @param series: The time strings as series
+    @param window_size: Number of hours for one time step
+    @return: Transformed time strings
+    """
+    # Timestring is of format
     time_strings = series.astype('str').str.split(' ')
+    # After splitting it is of format: "DD:MM:YY" and "HH:MM:SS"
+    # Extract the HH and divide them by window_size to get the portion of the day this hour lies in
+    # Then add it to the day part of the string
     return time_strings.apply(lambda x: f'{x[0]}_' + str(int(int(x[1].split(':')[0]) / window_size)))
 
 
@@ -165,26 +175,20 @@ class MimicParser(object):
 
     def add_admissions_columns(self):
         """
-        Adds a field whether a person is black (TODO why???)
+        Adds admission time
         """
 
         df = pd.read_csv(f'{self.mimic_folder_path}/ADMISSIONS.csv')
         df.columns = df.columns.str.lower()
-        ethn_dict = dict(zip(df['hadm_id'], df['ethnicity']))
         admittime_dict = dict(zip(df['hadm_id'], df['admittime']))
 
         file_name = self.cdb_path + '.csv'
         df_shard = pd.read_csv(file_name)
         df_shard['hadm_id'] = df_shard['hadmid_day'].str.split('_').apply(lambda x: x[0])
         df_shard['hadm_id'] = df_shard['hadm_id'].astype('int')
-        df_shard['ethnicity'] = df_shard['hadm_id'].apply(lambda x: map_dict(x, ethn_dict))
-        black_condition = df_shard['ethnicity'].str.contains('.*black.*', flags=re.IGNORECASE)
-        df_shard['black'] = 0
-        df_shard['black'][black_condition] = 1
-        del df_shard['ethnicity']
         df_shard['admittime'] = df_shard['hadm_id'].apply(lambda x: map_dict(x, admittime_dict))
         df_shard.to_csv(self.aac_path + '.csv', index=False)
-        print("Created 24h blocks")
+        print("Added Admittime")
 
     def add_patient_columns(self, hadm_dict):
         """
