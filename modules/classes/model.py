@@ -17,6 +17,7 @@ class ICU_LSTM(nn.Module):
         self.dense = nn.Linear(hidden_size, output_size)
 
         self.attention = None
+        self.h_c = None
 
         self.init_weights()
 
@@ -70,45 +71,32 @@ class ICU_LSTM(nn.Module):
 
         output = torch.sigmoid(intermediate)
 
-        return output, h_c
+        self.h_c = h_c
+
+        return output
 
 
 class ICU_NN(nn.Module):
     def __init__(self, input_size):
         super(ICU_NN, self).__init__()
         hidden_size = 256
-        num_layers = 1
         output_size = 1
 
         self.attention_layer = nn.Linear(input_size, input_size, bias=False)
-        self.linear = nn.Linear(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers, batch_first=True)
+        self.linear = nn.Linear(input_size, hidden_size)
         self.dense = nn.Linear(hidden_size, output_size)
 
         self.attention = None
 
     def forward(self, features):
-        n_timesteps = features.shape[1]
-
         # x is of shape batch_size x seq_length x n_features
-        attention = self.attention_layer(features)
-        attention = torch.softmax(attention, dim=1)
+        # attention = self.attention_layer(features)
+        # attention = torch.softmax(attention, dim=1)
         # Save a to attention variable for being able to return it later
-        self.attention = attention.clone().detach().cpu().numpy()
-        features = attention * features
-
-        seq_lengths = get_seq_length_from_padded_seq(features.clone().detach().cpu().numpy())
-        features = pack_padded_sequence(features, seq_lengths, batch_first=True, enforce_sorted=False)
+        # self.attention = attention.clone().detach().cpu().numpy()
+        # features = attention * features
         intermediate = self.linear(features)
-        intermediate, _ = pad_packed_sequence(intermediate, batch_first=True, padding_value=0, total_length=n_timesteps)
-
         intermediate = self.dense(intermediate)
-
-        # Manually recreate Keras Masking
-        # In Keras masking a mask means the last non-masked input is used
-        for i in range(len(seq_lengths)):
-            pad_i = seq_lengths[i]
-            intermediate[i, pad_i:, :] = intermediate[i, pad_i - 1, :]
-
         output = torch.sigmoid(intermediate)
 
         return output

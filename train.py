@@ -1,6 +1,6 @@
 from modules.classes.mimic_parser import MimicParser
 from modules.classes.mimic_pre_processor import MimicPreProcessor
-from modules.train_model import train_model
+from modules.train_model import train_model, train_LSTM, train_NN
 
 
 def get_targets():
@@ -16,15 +16,18 @@ def get_pickle_folder(mimic_version, n_time_steps):
     return f'./data/pickled_data_sets/mimic_{mimic_version}/{n_time_steps}_ts'
 
 
-def train_models(targets, percentages, mimic_version, data_path):
+def train_models(targets, percentages, mimic_version, data_path, n_time_steps):
     for target in targets:
         print(f'\nTraining {target}')
         for percentage in percentages:
             p = int(percentage * 100)
-            for seed in range(3):
-                model_name = f'mimic_{mimic_version}_{target}_{p}_percent_{seed}'
-                train_model(model_name=model_name, target=target, n_percentage=percentage, data_path=data_path,
-                            seed=seed)
+            for seed in range(5):
+                print('Training NN')
+                model_name = f'mimic_NN_{mimic_version}_{target}_{n_time_steps}_{seed}'
+                train_NN(model_name=model_name, target=target, n_percentage=percentage, data_path=data_path, seed=seed)
+                print('Training LSTM')
+                model_name = f'mimic_LSTM_{mimic_version}_{target}_{n_time_steps}_{seed}'
+                train_LSTM(model_name=model_name, target=target, n_percentage=percentage, data_path=data_path, seed=seed)
                 print(f'\rFinished training on {seed=}')
             print(f'\rFinished training on {percentage * 100}% of data')
 
@@ -66,7 +69,7 @@ def main(parse_mimic, pre_process_data, create_models, mimic_version, window_siz
             print(f'Created Datasets for {target}\n')
 
     if create_models:
-        train_models(get_targets(), get_percentages(), mimic_version, pickled_data_path)
+        train_models(get_targets(), get_percentages(), mimic_version, pickled_data_path, n_time_steps)
 
 
 if __name__ == "__main__":
