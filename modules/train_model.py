@@ -8,7 +8,7 @@ from torch.optim import RMSprop
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from modules.classes.model import ICU_LSTM, ICU_NN
+from modules.classes.models import ICU_LSTM, ICU_NN, ICU_LSTM_Attention
 from time import time
 
 from modules.pickle_utils import load_pickle, get_pickle_path
@@ -50,6 +50,12 @@ def load_data(data_path, target, n_percentage, reduce_dimensions=False):
 def train_LSTM(model_name, data_path, target, n_percentage, seed=42):
     train_dataset, val_dataset, n_features = load_data(data_path, target, n_percentage)
     model = ICU_LSTM(n_features)
+    train_model(model_name, model, train_dataset, val_dataset, seed=seed)
+
+
+def train_LSTM_Attention(model_name, data_path, target, n_percentage, seed=42):
+    train_dataset, val_dataset, n_features = load_data(data_path, target, n_percentage)
+    model = ICU_LSTM_Attention(n_features)
     train_model(model_name, model, train_dataset, val_dataset, seed=seed)
 
 

@@ -69,6 +69,14 @@ class MimicPreProcessor(object):
         return df, feature_names
 
     def split_and_normalize_data(self, df, train_percentage=0.7, val_percentage=0.1, undersample=True):
+        """
+        Splits data into train, validation and test set. Then applies normalization as well as undersampling (if specified)
+        @param df: data to be split
+        @param train_percentage: percentage of training samples
+        @param val_percentage: percentage of validation samples
+        @param undersample: whether to apply undersampling
+        @return: train, validation and test set
+        """
         keys = df[self.id_col].sample(frac=1).unique()
         train_bound = int(train_percentage * len(keys))
         val_bound = int((train_percentage + val_percentage) * len(keys))
@@ -101,7 +109,14 @@ class MimicPreProcessor(object):
         return train_data, val_data, test_data
 
     def pad_data(self, df, time_steps, pad_value=0):
-        df = pad_sequences(df, time_steps, pad_value=pad_value, id_col=self.id_col)
+        """
+        Pad dataframe and create boolean mask
+        @param df: dataframe to be padded
+        @param time_steps: number of time steps to pad up to
+        @param pad_value: value with which the entry will get padded
+        @return: padded data and boolean mask
+        """
+        df = pad_sequences(df, time_steps, pad_value=pad_value, grouping_col=self.id_col)
         df = df.drop(columns=[self.id_col])
         whole_data = df.values
         whole_data = whole_data.reshape(int(whole_data.shape[0] / time_steps), time_steps, whole_data.shape[1])
@@ -115,7 +130,15 @@ class MimicPreProcessor(object):
         print("Padded data frame")
         return whole_data, mask
 
-    def pickle_data(self, whole_data, mask, name, target, output_folder):
+    def save_data_to_disk(self, whole_data, mask, name, target, output_folder):
+        """
+        Persist data to disk with pickle
+        @param whole_data: dataset to be persisted
+        @param mask: boolean mask of which entry is padded
+        @param name: name of the files
+        @param target: target column
+        @param output_folder: target folder for saved files
+        """
         # Because the targets are for the same day shift the targets by one and ignore the last day
         # because no targets exist
         input_data = whole_data[:, :-1, :-1]
@@ -134,15 +157,25 @@ class MimicPreProcessor(object):
         dump_pickle(targets_mask, get_pickle_path(f'{name}_targets_mask', target, output_folder))
 
     def pre_process_and_save_files(self, target, n_time_steps, output_folder):
+        """
+        Run a pipeline that:
+            creates the target column target
+            splits the data into train, validation and test set
+            Padds the entry to n_time_steps
+            Persists the data onto the disk to output_folder
+        @param target: target column
+        @param n_time_steps: number of time steps
+        @param output_folder: target folder for saved files
+        """
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
         df, feature_names = self.create_target(target)
         dump_pickle(feature_names, get_pickle_path('features', target, output_folder))
-        df = filter_sequences(df, 2, n_time_steps, id_col=self.id_col)
+        df = filter_sequences(df, 2, n_time_steps, grouping_col=self.id_col)
         train, val, test = self.split_and_normalize_data(df, train_percentage=0.7, val_percentage=0.1, undersample=True)
 
         for dataset, name in [(train, 'train'), (val, 'validation'), (test, 'test')]:
             whole_data, mask = self.pad_data(dataset, time_steps=n_time_steps)
-            self.pickle_data(whole_data, mask, name, target, output_folder)
+            self.save_data_to_disk(whole_data, mask, name, target, output_folder)
 
         print(f'Saved files to folder: {output_folder}')

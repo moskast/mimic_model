@@ -21,6 +21,8 @@ Simply adjusting the target to 'MI', 'Sepsis', or 'Vancomycin' will generate the
 
 ### Prerequisites
 Refer to env.yml
+Also download the hopfield implementation over at: https://github.com/ml-jku/hopfield-layers
+and put it into modules/hopfieldlayers
 
 ### License
 This project is licensed under the MIT License - see the LICENSE.md file for details
