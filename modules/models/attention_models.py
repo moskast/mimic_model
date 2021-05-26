@@ -5,12 +5,18 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from modules.pad_sequences import get_seq_length_from_padded_seq
 
 
-class ICU_LSTM(nn.Module):
-    def __init__(self, input_size):
-        super(ICU_LSTM, self).__init__()
-        hidden_size = 256
-        num_layers = 1
-        output_size = 1
+class AttentionLSTM(nn.Module):
+    def __init__(self, input_size, hidden_size=256, output_size=1, num_layers=1, full_attention=True):
+        """
+        LSTM model which incorporates an attention mechanism
+        @param input_size: number of input units
+        @param hidden_size: number of hidden units [defaults to 256]
+        @param output_size: number of output units [defaults to 1]
+        @param num_layers: number of layers [defaults to 1]
+        @param full_attention: use attention over time and features or only time for each feature [defaults to over
+        time and features]
+        """
+        super(AttentionLSTM, self).__init__()
 
         self.attention_layer = nn.Linear(input_size, input_size, bias=False)
         self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers, batch_first=True)
@@ -18,12 +24,13 @@ class ICU_LSTM(nn.Module):
 
         self.attention = None
         self.h_c = None
+        self.full_attention = full_attention
 
         self.init_weights()
 
     def init_weights(self):
         """
-        Here we reproduce Keras default initialization weights to initialize Embeddings/LSTM weights
+        Reproduce Keras default initialization weights to initialize Embeddings/LSTM weights
         """
         ih = (param.data for name, param in self.named_parameters() if 'lstm.weight_ih' in name)
         hh = (param.data for name, param in self.named_parameters() if 'lstm.weight_hh' in name)
@@ -47,7 +54,10 @@ class ICU_LSTM(nn.Module):
 
         # x is of shape batch_size x seq_length x n_features
         attention = self.attention_layer(features)
-        attention = torch.softmax(attention, dim=1)
+        if self.full_attention:
+            attention = torch.softmax(attention, dim=None)
+        else:
+            attention = torch.softmax(attention, dim=1)
         # Save a to attention variable for being able to return it later
         self.attention = attention.clone().detach().cpu().numpy()
         features = attention * features
@@ -72,31 +82,5 @@ class ICU_LSTM(nn.Module):
         output = torch.sigmoid(intermediate)
 
         self.h_c = h_c
-
-        return output
-
-
-class ICU_NN(nn.Module):
-    def __init__(self, input_size):
-        super(ICU_NN, self).__init__()
-        hidden_size = 256
-        output_size = 1
-
-        self.attention_layer = nn.Linear(input_size, input_size, bias=False)
-        self.linear = nn.Linear(input_size, hidden_size)
-        self.dense = nn.Linear(hidden_size, output_size)
-
-        self.attention = None
-
-    def forward(self, features):
-        # x is of shape batch_size x seq_length x n_features
-        # attention = self.attention_layer(features)
-        # attention = torch.softmax(attention, dim=1)
-        # Save a to attention variable for being able to return it later
-        # self.attention = attention.clone().detach().cpu().numpy()
-        # features = attention * features
-        intermediate = self.linear(features)
-        intermediate = self.dense(intermediate)
-        output = torch.sigmoid(intermediate)
 
         return output
