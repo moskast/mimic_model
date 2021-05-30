@@ -48,7 +48,7 @@ class ComparisonLSTM(nn.Module):
         return output
 
 
-class ComparisonFFNN(nn.Module):
+class ComparisonFNN(nn.Module):
     def __init__(self, input_size, hidden_size=2250,  output_size=1):
         """
         Init of Feed Forward Neural Net class for comparison of NN vs LSTM to determine the need of time series
@@ -56,7 +56,7 @@ class ComparisonFFNN(nn.Module):
         @param hidden_size: number of hidden units [defaults to 2250]
         @param output_size: number of output units [defaults to 1]
         """
-        super(ComparisonFFNN, self).__init__()
+        super(ComparisonFNN, self).__init__()
         self.linear = nn.Linear(input_size, hidden_size)
         self.dense = nn.Linear(hidden_size, output_size)
 

@@ -1,6 +1,10 @@
 from modules.classes.mimic_parser import MimicParser
 from modules.classes.mimic_pre_processor import MimicPreProcessor
-from modules.train_model import train_LSTM, train_NN, train_LSTM_Attention
+from modules.load_data import load_data_sets
+from modules.models.attention_models import AttentionLSTM
+from modules.models.comparison_models import ComparisonLSTM, ComparisonFNN
+from modules.models.hopfield_models import HopfieldLayerModel, HopfieldPoolingModel, HopfieldLookupModel
+from modules.train_model import train_model
 
 
 def get_targets():
@@ -24,28 +28,43 @@ def get_pickle_folder(mimic_version, n_time_steps):
     return f'./data/pickled_data_sets/mimic_{mimic_version}/{n_time_steps}_ts'
 
 
-def train_models(targets, percentages, mimic_version, data_path, n_time_steps):
+def train_models(mimic_version, data_path, n_time_steps, train_comparison=False):
     """
     Training loop for training models with targets and percentages
-    @param targets: targets for the experiments
-    @param percentages: percentages of training data to be used for the experiments
     @param mimic_version: which mimic version to use 3 or 4
     @param data_path: path to data for the experiments
     @param n_time_steps: number of time step for one sample
+    @param train_comparison: whether to train for NN-LSTM comparison or benchmark experiment
     """
-    for target in targets:
-        print(f'\nTraining {target}')
-        for p in percentages:
-            for seed in range(5):
-                print('Training NN')
-                m_id = f'mimic_NN_{mimic_version}_{target}_{n_time_steps}_{seed}'
-                train_NN(model_name=m_id, target=target, n_percentage=p, data_path=data_path, seed=seed)
-                print('Training LSTM')
-                m_id = f'mimic_LSTM_{mimic_version}_{target}_{n_time_steps}_{seed}'
-                train_LSTM(model_name=m_id, target=target, n_percentage=p, data_path=data_path, seed=seed)
-                print('Training LSTM Attention')
-                m_id = f'mimic_LSTM_Attention_{mimic_version}_{target}_{n_time_steps}_{seed}'
-                train_LSTM_Attention(model_name=m_id, target=target, n_percentage=p, data_path=data_path, seed=seed)
+    for target in get_targets():
+        print(f'\nTarget: {target}')
+        for p in get_percentages():
+            print(f'Percentage: {p}')
+            train_dataset, val_dataset, n_features = load_data_sets(data_path, target, p)
+            if train_comparison:
+                train_dataset_reduced, val_dataset_reduced, n_features_reduced = load_data_sets(data_path, target, p, True)
+            for seed in range(1):
+                common_model_id = f'_{mimic_version}_{target}_{n_time_steps}_{seed}'
+                if train_comparison:
+                    model_id = 'comparison_LSTM' + common_model_id
+                    model = ComparisonLSTM(n_features)
+                    train_model(model_id, model, train_dataset, val_dataset, seed=seed)
+                    print('Training NN')
+                    model_id = 'comparison_FNN' + common_model_id
+                    model = ComparisonFNN(n_features_reduced)
+                    train_model(model_id, model, train_dataset_reduced, val_dataset_reduced, seed=seed)
+                    print('Training LSTM')
+
+                else:
+                    models = [('partial_attention_LSTM', AttentionLSTM(n_features, False)),
+                              ('full_attention_LSTM', AttentionLSTM(n_features, True)),
+                              ('hopfield_layer', HopfieldLayerModel(n_features)),
+                              ('hopfield_pooling', HopfieldPoolingModel(n_features)),
+                              ('hopfield_lookup', HopfieldLookupModel(n_features))]
+                    for model_name, model in models:
+                        model_id = model_name + common_model_id
+                        train_model(model_id, model, train_dataset, val_dataset, seed=seed)
+
                 print(f'\rFinished training on {seed=}')
             print(f'\rFinished training on {p * 100}% of data')
 
@@ -95,7 +114,7 @@ def main(parse_mimic, pre_process_data, create_models, mimic_version, window_siz
             print(f'Created Datasets for {target}\n')
 
     if create_models:
-        train_models(get_targets(), get_percentages(), mimic_version, pickled_data_path, n_time_steps)
+        train_models(mimic_version, pickled_data_path, n_time_steps)
 
 
 if __name__ == "__main__":

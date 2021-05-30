@@ -5,68 +5,10 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.optim import RMSprop
-from torch.utils.data import TensorDataset, DataLoader
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from modules.classes.models import ICU_LSTM, ICU_NN, ICU_LSTM_Attention
 from time import time
-
-from modules.pickle_utils import load_pickle, get_pickle_path
-
-
-def load_data(data_path, target, n_percentage, reduce_dimensions=False):
-    training_data = load_pickle(get_pickle_path('train_data', target, data_path))
-    training_targets = load_pickle(get_pickle_path('train_targets', target, data_path))
-    validation_data = load_pickle(get_pickle_path('validation_data', target, data_path))
-    validation_targets = load_pickle(get_pickle_path('validation_targets', target, data_path))
-
-    # N_Samples x Seq_Length x N_Features
-    training_data = training_data[0:int(n_percentage * training_data.shape[0])]  # Subsample if necessary
-    training_targets = training_targets[0:int(n_percentage * training_targets.shape[0])]
-
-    n_features = training_data.shape[2]
-
-    if reduce_dimensions:
-        training_data = training_data.reshape(-1, n_features)  # Reshape to delete time dimension
-        train_rows = ~np.all(training_data == 0, axis=1)
-        training_data = training_data[train_rows]
-        training_targets = training_targets.reshape(-1, 1)
-        training_targets = training_targets[train_rows]
-
-        validation_data = validation_data.reshape(-1, n_features)
-        validation_rows = ~np.all(validation_data == 0, axis=1)
-        validation_data = validation_data[validation_rows]
-        validation_targets = validation_targets.reshape(-1, 1)
-        validation_targets = validation_targets[validation_rows]
-
-    train_dataset = TensorDataset(torch.tensor(training_data, dtype=torch.float),
-                                  torch.tensor(training_targets, dtype=torch.float))
-    val_dataset = TensorDataset(torch.tensor(validation_data, dtype=torch.float),
-                                torch.tensor(validation_targets, dtype=torch.float))
-
-    return train_dataset, val_dataset, n_features
-
-
-def train_LSTM(model_name, data_path, target, n_percentage, seed=42):
-    train_dataset, val_dataset, n_features = load_data(data_path, target, n_percentage)
-    model = ICU_LSTM(n_features)
-    train_model(model_name, model, train_dataset, val_dataset, seed=seed)
-
-
-def train_LSTM_Attention(model_name, data_path, target, n_percentage, seed=42):
-    train_dataset, val_dataset, n_features = load_data(data_path, target, n_percentage)
-    model = ICU_LSTM_Attention(n_features)
-    train_model(model_name, model, train_dataset, val_dataset, seed=seed)
-
-
-def train_NN(model_name, data_path, target, n_percentage=1.0, seed=42):
-    train_dataset, val_dataset, n_features = load_data(data_path, target, n_percentage, True)
-    model = ICU_NN(n_features)
-    train_model(model_name, model, train_dataset, val_dataset, seed=seed)
-
-
-def return_loaded_model(model_name):
-    return torch.load("./output/models/best_models/{0}.h5".format(model_name))
 
 
 def update(model, loss_function, data_loader, optimizer, device='cpu'):
@@ -100,18 +42,16 @@ def evaluate(model, metric, data_loader, device='cpu'):
 
 def train_model(model_name, model, train_dataset, val_dataset, epochs=13, batch_size=16, lr=0.001, seed=42):
     """
-
-  Training the model using parameter inputs
-
-  Args:
-  ----
-  model_name : Parameter used for naming the checkpoint_dir
-
-  Return:
-  -------
-  Nonetype. Fits model only.
-
-  """
+    Training the model using parameter inputs
+    @param model_name: Parameter used for naming the checkpoint_dir
+    @param model: model to be trained
+    @param train_dataset: training dataset
+    @param val_dataset: validation dataset
+    @param epochs: number of epochs to train
+    @param batch_size: batch size
+    @param lr: learning rate
+    @param seed: random seed
+    """
     torch.manual_seed(seed)
     base_dir = './output/models'
     checkpoint_dir = f'{base_dir}/best_models'
@@ -131,7 +71,7 @@ def train_model(model_name, model, train_dataset, val_dataset, epochs=13, batch_
     writer = SummaryWriter(log_dir=f'{logs_dir}/{model_name}_{time()}.log')
 
     best_val_loss = math.inf
-    print(f'Training model {model_name} using {device}', end=" ")
+    print(f'Training model {model_name} using {device}')
     for epoch in range(1, epochs + 1):
         train_loss = update(model, F.binary_cross_entropy, train_data_loader, optimizer, device)
         writer.add_scalar('Loss/train', train_loss, epoch)
