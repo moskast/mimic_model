@@ -55,9 +55,10 @@ class AttentionLSTM(nn.Module):
         # x is of shape batch_size x seq_length x n_features
         attention = self.attention_layer(features)
         if self.full_attention:
-            attention = torch.softmax(attention, dim=None)
-        else:
-            attention = torch.softmax(attention, dim=1)
+            attention = attention.reshape(features.shape[0], -1)
+        attention = torch.softmax(attention, dim=1)
+        if self.full_attention:
+            attention = attention.reshape(features.shape[0], features.shape[1], features.shape[2])
         # Save a to attention variable for being able to return it later
         self.attention = attention.clone().detach().cpu().numpy()
         features = attention * features

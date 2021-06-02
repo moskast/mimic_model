@@ -1,3 +1,5 @@
+import time
+
 from modules.classes.mimic_parser import MimicParser
 from modules.classes.mimic_pre_processor import MimicPreProcessor
 from modules.load_data import load_data_sets
@@ -36,6 +38,7 @@ def train_models(mimic_version, data_path, n_time_steps, train_comparison=False)
     @param n_time_steps: number of time step for one sample
     @param train_comparison: whether to train for NN-LSTM comparison or benchmark experiment
     """
+    starttime = time.time()
     for target in get_targets():
         print(f'\nTarget: {target}')
         for p in get_percentages():
@@ -56,17 +59,19 @@ def train_models(mimic_version, data_path, n_time_steps, train_comparison=False)
                     print('Training LSTM')
 
                 else:
-                    models = [('partial_attention_LSTM', AttentionLSTM(n_features, False)),
-                              ('full_attention_LSTM', AttentionLSTM(n_features, True)),
+                    models = [('partial_attention_LSTM', AttentionLSTM(n_features, full_attention=False)),
+                              ('full_attention_LSTM', AttentionLSTM(n_features, full_attention=True)),
                               ('hopfield_layer', HopfieldLayerModel(n_features)),
                               ('hopfield_pooling', HopfieldPoolingModel(n_features)),
-                              ('hopfield_lookup', HopfieldLookupModel(n_features))]
+                              ('hopfield_lookup', HopfieldLookupModel(n_features, int(len(train_dataset)/1000)))]
                     for model_name, model in models:
                         model_id = model_name + common_model_id
                         train_model(model_id, model, train_dataset, val_dataset, seed=seed)
 
                 print(f'\rFinished training on {seed=}')
             print(f'\rFinished training on {p * 100}% of data')
+    endtime = time.time()
+    print(f'{endtime - starttime} seconds needed for training')
 
 
 def main(parse_mimic, pre_process_data, create_models, mimic_version, window_size):

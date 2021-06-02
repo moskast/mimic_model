@@ -11,6 +11,15 @@ from torch.utils.tensorboard import SummaryWriter
 from time import time
 
 
+def count_parameters(model):
+    """
+    Counts the number of parameters of target model
+    @param model: model for which the parameters should be counted
+    @return: number of parameters
+    """
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
 def update(model, loss_function, data_loader, optimizer, device='cpu'):
     model.train()
     train_loss = []
@@ -40,7 +49,7 @@ def evaluate(model, metric, data_loader, device='cpu'):
     return values
 
 
-def train_model(model_name, model, train_dataset, val_dataset, epochs=13, batch_size=16, lr=0.001, seed=42):
+def train_model(model_name, model, train_dataset, val_dataset, epochs=1, batch_size=16, lr=0.001, seed=42):
     """
     Training the model using parameter inputs
     @param model_name: Parameter used for naming the checkpoint_dir
@@ -71,7 +80,8 @@ def train_model(model_name, model, train_dataset, val_dataset, epochs=13, batch_
     writer = SummaryWriter(log_dir=f'{logs_dir}/{model_name}_{time()}.log')
 
     best_val_loss = math.inf
-    print(f'Training model {model_name} using {device}')
+    print(f'Training model {model_name} with {count_parameters(model)} parameters using {device}')
+    starttime = time()
     for epoch in range(1, epochs + 1):
         train_loss = update(model, F.binary_cross_entropy, train_data_loader, optimizer, device)
         writer.add_scalar('Loss/train', train_loss, epoch)
@@ -84,6 +94,6 @@ def train_model(model_name, model, train_dataset, val_dataset, epochs=13, batch_
             torch.save(model, f'{checkpoint_dir}/{model_name}.h5')
         torch.save(model, f'./{final_model_dir}/{model_name}.h5')
         print(f'\rEpoch {epoch:02d} out of {epochs} with loss {val_loss}', end=" ")
-    print()
+    print(f'\nTraining took {time() - starttime} seconds')
     if device != 'cpu':
         torch.cuda.empty_cache()
