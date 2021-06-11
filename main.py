@@ -46,7 +46,7 @@ def train_models(mimic_version, data_path, n_time_steps, train_comparison=False)
             train_dataset, val_dataset, n_features = load_data_sets(data_path, target, p)
             if train_comparison:
                 train_dataset_reduced, val_dataset_reduced, n_features_reduced = load_data_sets(data_path, target, p, True)
-            for seed in range(1):
+            for seed in range(5):
                 common_model_id = f'_{mimic_version}_{target}_{n_time_steps}_{seed}'
                 if train_comparison:
                     model_id = 'comparison_LSTM' + common_model_id

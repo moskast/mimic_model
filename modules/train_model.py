@@ -49,7 +49,7 @@ def evaluate(model, metric, data_loader, device='cpu'):
     return values
 
 
-def train_model(model_name, model, train_dataset, val_dataset, epochs=1, batch_size=16, lr=0.001, seed=42):
+def train_model(model_name, model, train_dataset, val_dataset, epochs=13, batch_size=16, lr=0.001, seed=42):
     """
     Training the model using parameter inputs
     @param model_name: Parameter used for naming the checkpoint_dir

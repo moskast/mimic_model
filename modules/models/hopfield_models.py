@@ -44,7 +44,7 @@ class HopfieldPoolingModel(nn.Module):
 
 
 class HopfieldLookupModel(nn.Module):
-    def __init__(self, input_size, quantity, output_size=1):
+    def __init__(self, input_size, quantity=1625, output_size=1):
         """
 
         @param input_size:
@@ -52,7 +52,6 @@ class HopfieldLookupModel(nn.Module):
         @param output_size:
         """
         super(HopfieldLookupModel, self).__init__()
-        quantity = 1625
         self.hopfield_lookup = HopfieldLayer(input_size=input_size, quantity=quantity)
         self.output = nn.Linear(self.hopfield_lookup.output_size, output_size)
 
