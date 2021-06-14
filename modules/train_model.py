@@ -81,7 +81,7 @@ def train_model(model_name, model, train_dataset, val_dataset, epochs=13, batch_
 
     best_val_loss = math.inf
     print(f'Training model {model_name} with {count_parameters(model)} parameters using {device}')
-    starttime = time()
+    start_time = time()
     for epoch in range(1, epochs + 1):
         train_loss = update(model, F.binary_cross_entropy, train_data_loader, optimizer, device)
         writer.add_scalar('Loss/train', train_loss, epoch)
@@ -94,6 +94,6 @@ def train_model(model_name, model, train_dataset, val_dataset, epochs=13, batch_
             torch.save(model, f'{checkpoint_dir}/{model_name}.h5')
         torch.save(model, f'./{final_model_dir}/{model_name}.h5')
         print(f'\rEpoch {epoch:02d} out of {epochs} with loss {val_loss}', end=" ")
-    print(f'\nTraining took {time() - starttime} seconds')
+    print(f'\nTraining took {time() - start_time} seconds')
     if device != 'cpu':
         torch.cuda.empty_cache()

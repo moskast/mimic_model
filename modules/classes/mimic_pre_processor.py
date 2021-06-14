@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from modules.pad_sequences import pad_sequences, filter_sequences
-from modules.pickle_utils import dump_pickle, get_pickle_path
+from modules.load_data import dump_pickle, get_pickle_file_path
 
 
 def wbc_criterion(x):
@@ -77,7 +77,9 @@ class MimicPreProcessor(object):
         @param undersample: whether to apply undersampling
         @return: train, validation and test set
         """
-        keys = df[self.id_col].sample(frac=1).unique()
+        print(f'{self.random_seed=}')
+        np.random.seed(self.random_seed)
+        keys = df[self.id_col].sample(frac=1, random_state=self.random_seed).unique()
         train_bound = int(train_percentage * len(keys))
         val_bound = int((train_percentage + val_percentage) * len(keys))
         train_keys = keys[:train_bound]
@@ -151,10 +153,10 @@ class MimicPreProcessor(object):
         assert input_data.shape == input_data_mask.shape
         assert targets.shape == targets_mask.shape
 
-        dump_pickle(input_data, get_pickle_path(f'{name}_data', target, output_folder))
-        dump_pickle(targets, get_pickle_path(f'{name}_targets', target, output_folder))
-        dump_pickle(input_data_mask, get_pickle_path(f'{name}_data_mask', target, output_folder))
-        dump_pickle(targets_mask, get_pickle_path(f'{name}_targets_mask', target, output_folder))
+        dump_pickle(input_data, get_pickle_file_path(f'{name}_data', target, output_folder))
+        dump_pickle(targets, get_pickle_file_path(f'{name}_targets', target, output_folder))
+        dump_pickle(input_data_mask, get_pickle_file_path(f'{name}_data_mask', target, output_folder))
+        dump_pickle(targets_mask, get_pickle_file_path(f'{name}_targets_mask', target, output_folder))
 
     def pre_process_and_save_files(self, target, n_time_steps, output_folder):
         """
@@ -170,7 +172,7 @@ class MimicPreProcessor(object):
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
         df, feature_names = self.create_target(target)
-        dump_pickle(feature_names, get_pickle_path('features', target, output_folder))
+        dump_pickle(feature_names, get_pickle_file_path('features', target, output_folder))
         df = filter_sequences(df, 2, n_time_steps, grouping_col=self.id_col)
         train, val, test = self.split_and_normalize_data(df, train_percentage=0.7, val_percentage=0.1, undersample=True)
 

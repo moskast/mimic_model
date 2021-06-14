@@ -1,8 +1,50 @@
+import pickle
+
 import numpy as np
 import torch
 from torch.utils.data import TensorDataset
 
-from modules.pickle_utils import load_pickle, get_pickle_path
+
+def dump_pickle(variable, path):
+    """
+    Save a file via pickle
+    @param variable: file to save
+    @param path: path of the saved file
+    """
+    with open(path, 'wb') as file:
+        pickle.dump(variable, file)
+
+
+def load_pickle(path):
+    """
+    Load a saved pickle file
+    @param path: path of the saved file
+    @return: loaded pickle file
+    """
+    with open(path, 'rb') as file:
+        variable = pickle.load(file)
+    return variable
+
+
+def get_pickle_folder(mimic_version, n_time_steps, seed=None):
+    """
+    @return: path to data for the experiments
+    """
+    path = f'./data/pickled_data_sets/mimic_{mimic_version}/{n_time_steps}_ts'
+    if seed is not None:
+        path += f'_{seed}'
+    return path
+
+
+def get_pickle_file_path(file_name, target, folder='.output/pickled_data_sets'):
+    """
+    Returns a path to a saved file
+    @param file_name: name of the saved file
+    @param target: name of target column
+    @param folder: name of the folder file is saved in
+    @return: the path to the pickle folder with the filename structure {target}_{variable_name}.pickle in this case
+    """
+    return f'{folder}/{target}_{file_name}.pickle'
 
 
 def return_loaded_model(model_name):
@@ -23,10 +65,10 @@ def load_data_sets(data_path, target, n_percentage, reduce_dimensions=False):
     @param reduce_dimensions: whether to reduce the time dimension
     @return: train and validation data as Pytorch datasets as well as the number of features
     """
-    training_data = load_pickle(get_pickle_path('train_data', target, data_path))
-    training_targets = load_pickle(get_pickle_path('train_targets', target, data_path))
-    validation_data = load_pickle(get_pickle_path('validation_data', target, data_path))
-    validation_targets = load_pickle(get_pickle_path('validation_targets', target, data_path))
+    training_data = load_pickle(get_pickle_file_path('train_data', target, data_path))
+    training_targets = load_pickle(get_pickle_file_path('train_targets', target, data_path))
+    validation_data = load_pickle(get_pickle_file_path('validation_data', target, data_path))
+    validation_targets = load_pickle(get_pickle_file_path('validation_targets', target, data_path))
 
     # N_Samples x Seq_Length x N_Features
     training_data = training_data[0:int(n_percentage * training_data.shape[0])]  # Subsample if necessary
