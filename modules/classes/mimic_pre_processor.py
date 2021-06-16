@@ -68,7 +68,7 @@ class MimicPreProcessor(object):
 
         return df, feature_names
 
-    def split_and_normalize_data(self, df, train_percentage=0.7, val_percentage=0.1, undersample=True):
+    def split_and_normalize_data(self, df, train_percentage, val_percentage, undersample=True):
         """
         Splits data into train, validation and test set. Then applies normalization as well as undersampling (if specified)
         @param df: data to be split
@@ -77,7 +77,7 @@ class MimicPreProcessor(object):
         @param undersample: whether to apply undersampling
         @return: train, validation and test set
         """
-        print(f'{self.random_seed=}')
+        print(f'{self.random_seed=} {train_percentage=} {val_percentage=}')
         np.random.seed(self.random_seed)
         keys = df[self.id_col].sample(frac=1, random_state=self.random_seed).unique()
         train_bound = int(train_percentage * len(keys))
@@ -174,7 +174,7 @@ class MimicPreProcessor(object):
         df, feature_names = self.create_target(target)
         dump_pickle(feature_names, get_pickle_file_path('features', target, output_folder))
         df = filter_sequences(df, 2, n_time_steps, grouping_col=self.id_col)
-        train, val, test = self.split_and_normalize_data(df, train_percentage=0.7, val_percentage=0.1, undersample=True)
+        train, val, test = self.split_and_normalize_data(df, train_percentage=0.6, val_percentage=0.2, undersample=True)
 
         for dataset, name in [(train, 'train'), (val, 'validation'), (test, 'test')]:
             whole_data, mask = self.pad_data(dataset, time_steps=n_time_steps)

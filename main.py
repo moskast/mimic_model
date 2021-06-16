@@ -9,15 +9,17 @@ from modules.models.hopfield_models import HopfieldLayerModel, HopfieldPoolingMo
 from modules.train_model import train_model
 
 
-def train_models(mimic_version, data_path, n_time_steps, train_comparison=False):
+def train_models(mimic_version, data_path, n_time_steps, random_seed, train_comparison=False):
     """
     Training loop for training models with targets and percentages
     @param mimic_version: which mimic version to use 3 or 4
     @param data_path: path to data for the experiments
     @param n_time_steps: number of time step for one sample
+    @param random_seed: seed for setting random functions
     @param train_comparison: whether to train for NN-LSTM comparison or benchmark experiment
     """
     start_time = time.time()
+    print(f'{data_path=}')
     for target in get_targets():
         print(f'\nTarget: {target}')
         for p in get_percentages():
@@ -26,30 +28,29 @@ def train_models(mimic_version, data_path, n_time_steps, train_comparison=False)
             if train_comparison:
                 train_dataset_reduced, val_dataset_reduced, n_features_reduced = load_data_sets(data_path, target, p,
                                                                                                 True)
-            for random_seed in get_seeds():
-                common_model_id = f'_{mimic_version}_{target}_{n_time_steps}_{random_seed}'
-                if train_comparison:
-                    model_id = 'comparison_LSTM' + common_model_id
-                    model = ComparisonLSTM(n_features)
+            common_model_id = f'_{mimic_version}_{target}_{n_time_steps}_{random_seed}'
+            if train_comparison:
+                model_id = 'comparison_LSTM' + common_model_id
+                model = ComparisonLSTM(n_features)
+                train_model(model_id, model, train_dataset, val_dataset, seed=random_seed)
+                print('Training NN')
+                model_id = 'comparison_FNN' + common_model_id
+                model = ComparisonFNN(n_features_reduced)
+                train_model(model_id, model, train_dataset_reduced, val_dataset_reduced, seed=random_seed)
+                print('Training LSTM')
+
+            else:
+                models = [('partial_attention_LSTM', AttentionLSTM(n_features, full_attention=False))]#,
+                          # ('full_attention_LSTM', AttentionLSTM(n_features, full_attention=True)),
+                          # ('hopfield_layer', HopfieldLayerModel(n_features)),
+                          # ('hopfield_pooling', HopfieldPoolingModel(n_features)),
+                          # ('hopfield_lookup', HopfieldLookupModel(n_features, int(len(train_dataset) / 1000)))]
+                for model_name, model in models:
+                    model_id = model_name + common_model_id
                     train_model(model_id, model, train_dataset, val_dataset, seed=random_seed)
-                    print('Training NN')
-                    model_id = 'comparison_FNN' + common_model_id
-                    model = ComparisonFNN(n_features_reduced)
-                    train_model(model_id, model, train_dataset_reduced, val_dataset_reduced, seed=random_seed)
-                    print('Training LSTM')
 
-                else:
-                    models = [('partial_attention_LSTM', AttentionLSTM(n_features, full_attention=False)),
-                              ('full_attention_LSTM', AttentionLSTM(n_features, full_attention=True)),
-                              ('hopfield_layer', HopfieldLayerModel(n_features)),
-                              ('hopfield_pooling', HopfieldPoolingModel(n_features)),
-                              ('hopfield_lookup', HopfieldLookupModel(n_features, int(len(train_dataset) / 1000)))]
-                    for model_name, model in models:
-                        model_id = model_name + common_model_id
-                        train_model(model_id, model, train_dataset, val_dataset, seed=random_seed)
-
-                print(f'\rFinished training on {random_seed=}')
             print(f'\rFinished training on {p * 100}% of data')
+    print(f'\rFinished training on {random_seed=}')
     end_time = time.time()
     print(f'{end_time - start_time} seconds needed for training')
 
@@ -101,13 +102,16 @@ def main(parse_mimic, pre_process_data, create_models, mimic_version, window_siz
             print(f'Created Datasets for {target}\n')
 
     if create_models:
-        train_models(mimic_version, pickled_data_path, n_time_steps)
+        train_models(mimic_version, pickled_data_path, n_time_steps, random_seed)
 
 
 if __name__ == "__main__":
     parse = False
-    pre_process = True
-    train = False
+    pre_process = False
+    train = True
     mimic_v = 4
-    window_s = 24
-    main(parse, pre_process, train, mimic_v, window_s)
+    window_s = 12
+    # Train Comparison
+    # Maybe Window size?
+    for s in get_seeds():
+        main(parse, pre_process, train, mimic_v, window_s, s)
