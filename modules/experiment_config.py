@@ -2,7 +2,7 @@ def get_targets():
     """
     @return: The targets for the experiments
     """
-    return ['VANCOMYCIN']
+    return ['VANCOMYCIN', 'MI', 'SEPSIS']
 
 
 def get_percentages():

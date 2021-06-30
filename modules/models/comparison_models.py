@@ -57,14 +57,16 @@ class ComparisonFNN(nn.Module):
         @param output_size: number of output units [defaults to 1]
         """
         super(ComparisonFNN, self).__init__()
-        self.linear = nn.Linear(input_size, hidden_size)
-        self.dense = nn.Linear(hidden_size, output_size)
+        self.model = nn.Sequential(
+            nn.Linear(input_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, output_size)
+        )
 
         self.attention = None
 
     def forward(self, features):
-        intermediate = self.linear(features)
-        intermediate = self.dense(intermediate)
-        output = torch.sigmoid(intermediate)
+        logits = self.model(features)
+        output = torch.sigmoid(logits)
 
         return output
