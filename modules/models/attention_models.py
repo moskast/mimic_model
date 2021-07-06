@@ -6,7 +6,7 @@ from modules.pad_sequences import get_seq_length_from_padded_seq
 
 
 class AttentionLSTM(nn.Module):
-    def __init__(self, input_size, hidden_size=256, output_size=1, num_layers=1, full_attention=True):
+    def __init__(self, input_size, hidden_size=256, output_size=1, num_layers=1, num_targets=1, full_attention=True):
         """
         LSTM model which incorporates an attention mechanism
         @param input_size: number of input units
@@ -20,7 +20,8 @@ class AttentionLSTM(nn.Module):
 
         self.attention_layer = nn.Linear(input_size, input_size, bias=False)
         self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers, batch_first=True)
-        self.dense = nn.Linear(hidden_size, output_size)
+
+        self.output_layers = nn.ModuleList([nn.Linear(hidden_size, output_size) for i in range(num_targets)])
 
         self.attention = None
         self.h_c = None
@@ -51,6 +52,7 @@ class AttentionLSTM(nn.Module):
 
     def forward(self, features, h_c=None):
         n_timesteps = features.shape[1]
+        outputs = []
 
         # x is of shape batch_size x seq_length x n_features
         attention = self.attention_layer(features)
@@ -72,16 +74,19 @@ class AttentionLSTM(nn.Module):
             intermediate, h_c = self.lstm(features, h, c)
         intermediate, _ = pad_packed_sequence(intermediate, batch_first=True, padding_value=0, total_length=n_timesteps)
 
-        intermediate = self.dense(intermediate)
+        for output_layer in self.output_layers:
+            output = output_layer(intermediate)
 
-        # Manually recreate Keras Masking
-        # In Keras masking a mask means the last non-masked input is used
-        for i in range(len(seq_lengths)):
-            pad_i = seq_lengths[i]
-            intermediate[i, pad_i:, :] = intermediate[i, pad_i - 1, :]
+            # Manually recreate Keras Masking
+            # In Keras masking a mask means the last non-masked input is used
+            for i in range(len(seq_lengths)):
+                pad_i = seq_lengths[i]
+                output[i, pad_i:, :] = output[i, pad_i - 1, :]
 
-        output = torch.sigmoid(intermediate)
+            output = torch.sigmoid(output)
+
+            outputs.append(output)
 
         self.h_c = h_c
 
-        return output
+        return outputs

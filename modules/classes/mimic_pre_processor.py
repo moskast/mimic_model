@@ -25,71 +25,58 @@ class MimicPreProcessor(object):
         self.id_col = id_col
         self.random_seed = random_seed
 
-    def create_target(self, target):
+    def create_target(self, targets):
         """
         Given a dataframe creates a specified target for it as well as deleting columns that make the task trivial
-        @param target: One out of three targets to create [MI, SEPSIS, VANCOMYCIN]
-        @return: dataframe with target column as well as a list of feature names
+        @param targets: An array of targets
+        @return: dataframe with target column(s) as well as a list of feature names
         """
         df = self.parsed_mimic.copy()
         # Delete features that make the task trivial
-        toss = ['subject_id', 'yob', 'admityear']
-        if target == 'MI':
-            df[target] = ((df['troponin'] > 0.4) & (df['ckd'] == 0)).apply(lambda x: int(x))
-            toss += ['ct_angio', 'troponin', 'troponin_std', 'troponin_min', 'troponin_max', 'infection', 'ckd']
-        elif target == 'SEPSIS':
-            df['hr_sepsis'] = df['heart rate'].apply(lambda x: 1 if x > 90 else 0)
-            df['respiratory rate_sepsis'] = df['respiratory rate'].apply(lambda x: 1 if x > 20 else 0)
-            df['wbc_sepsis'] = df['wbcs'].apply(wbc_criterion)
-            df['temperature f_sepsis'] = df['temperature (f)'].apply(temp_criterion)
-            df['sepsis_points'] = (df['hr_sepsis'] + df['respiratory rate_sepsis']
-                                   + df['wbc_sepsis'] + df['temperature f_sepsis'])
-            df[target] = ((df['sepsis_points'] >= 2) & (df['infection'] == 1)).apply(lambda x: int(x))
-            del df['hr_sepsis']
-            del df['respiratory rate_sepsis']
-            del df['wbc_sepsis']
-            del df['temperature f_sepsis']
-            del df['sepsis_points']
-            del df['infection']
-            toss += ['ct_angio', 'infection', 'ckd']
-        elif target == 'VANCOMYCIN':
-            df[target] = df['vancomycin'].apply(lambda x: 1 if x > 0 else 0)
-            del df['vancomycin']
-            toss += ['ct_angio', 'infection', 'ckd']
+        trivial_features = ['subject_id', 'yob', 'admityear', 'ct_angio', 'infection', 'ckd']
+        if 'MI' in targets:
+            df['MI'] = ((df['troponin'] > 0.4) & (df['ckd'] == 0)).apply(lambda x: int(x))
+            trivial_features += ['troponin', 'troponin_std', 'troponin_min', 'troponin_max']
+        if 'SEPSIS' in targets:
+            hr_sepsis = df['heart rate'].apply(lambda x: 1 if x > 90 else 0)
+            respiratory_rate_sepsis = df['respiratory rate'].apply(lambda x: 1 if x > 20 else 0)
+            wbc_sepsis = df['wbcs'].apply(wbc_criterion)
+            temperature_f_sepsis = df['temperature (f)'].apply(temp_criterion)
+            sepsis_points = (hr_sepsis + respiratory_rate_sepsis + wbc_sepsis + temperature_f_sepsis)
+            df['SEPSIS'] = ((sepsis_points >= 2) & (df['infection'] == 1)).apply(lambda x: int(x))
+        if 'VANCOMYCIN' in targets:
+            df['VANCOMYCIN'] = df['vancomycin'].apply(lambda x: 1 if x > 0 else 0)
+            trivial_features += ['vancomycin']
 
+        df = df.drop(trivial_features, axis=1, errors='ignore')
         df = df.select_dtypes(exclude=['object'])
-        feature_names = [i for i in list(df.columns) if i not in toss]
-        df = df[feature_names]
-        feature_names.remove(target)
+        feature_names = list(df.columns[:-len(targets)])
 
         # Only remove id_col from features because it is needed later
         feature_names.remove(self.id_col)
-        print(f'Created target {target}')
+        print(f'Created target {targets}')
 
         return df, feature_names
 
-    def split_and_normalize_data(self, df, train_percentage, val_percentage, undersample=True):
+    def split_and_normalize_data(self, df, train_percentage, undersample=True, n_targets=1):
         """
-        Splits data into train, validation and test set. Then applies normalization as well as undersampling (if specified)
+        Splits data into train and test set. Then applies normalization as well as undersampling (if specified)
         @param df: data to be split
         @param train_percentage: percentage of training samples
-        @param val_percentage: percentage of validation samples
         @param undersample: whether to apply undersampling
+        @param n_targets: number of targets
         @return: train, validation and test set
         """
-        print(f'{self.random_seed=} {train_percentage=} {val_percentage=}')
+        print(f'{self.random_seed=} {train_percentage=}')
         np.random.seed(self.random_seed)
         keys = df[self.id_col].sample(frac=1, random_state=self.random_seed).unique()
         train_bound = int(train_percentage * len(keys))
-        val_bound = int((train_percentage + val_percentage) * len(keys))
         train_keys = keys[:train_bound]
-        val_keys = keys[train_bound:val_bound]
-        test_keys = keys[val_bound:]
+        test_keys = keys[train_bound:]
         train_data = df[df[self.id_col].isin(train_keys)]
-        val_data = df[df[self.id_col].isin(val_keys)]
         test_data = df[df[self.id_col].isin(test_keys)]
 
-        if undersample:
+        if undersample and n_targets == 1:
             positive_rows = train_data.iloc[:, -1] == 1
             pos_ids = np.unique(train_data[positive_rows][self.id_col])
             np.random.shuffle(pos_ids)
@@ -103,12 +90,11 @@ class MimicPreProcessor(object):
             train_data = df[df[self.id_col].isin(total_ids)]
             print('Balanced training data by undersampling')
 
-        means = train_data.iloc[:, :-1].mean(axis=0)
-        stds = train_data.iloc[:, :-1].std(axis=0)
-        train_data.iloc[:, :-1] = (train_data.iloc[:, :-1] - means) / stds
-        val_data.iloc[:, :-1] = (val_data.iloc[:, :-1] - means) / stds
-        test_data.iloc[:, :-1] = (test_data.iloc[:, :-1] - means) / stds
-        return train_data, val_data, test_data
+        means = train_data.iloc[:, :-n_targets].mean(axis=0)
+        stds = train_data.iloc[:, :-n_targets].std(axis=0)
+        train_data.iloc[:, :-n_targets] = (train_data.iloc[:, :-n_targets] - means) / stds
+        test_data.iloc[:, :-n_targets] = (test_data.iloc[:, :-n_targets] - means) / stds
+        return train_data, test_data
 
     def pad_data(self, df, time_steps, pad_value=0):
         """
@@ -132,52 +118,51 @@ class MimicPreProcessor(object):
         print("Padded data frame")
         return whole_data, mask
 
-    def save_data_to_disk(self, whole_data, mask, name, target, output_folder):
+    def save_data_to_disk(self, whole_data, mask, name, labels, output_folder, n_targets=1):
         """
         Persist data to disk with pickle
         @param whole_data: dataset to be persisted
         @param mask: boolean mask of which entry is padded
         @param name: name of the files
-        @param target: target column
+        @param labels: target column(s)
         @param output_folder: target folder for saved files
         """
         # Because the targets are for the same day shift the targets by one and ignore the last day
         # because no targets exist
-        input_data = whole_data[:, :-1, :-1]
-        targets = whole_data[:, 1:, -1]
-        targets = targets.reshape(targets.shape[0], targets.shape[1], 1)
-        input_data_mask = mask[:, :-1, :-1]
-        targets_mask = mask[:, 1:, -1]
-        targets_mask = targets_mask.reshape(targets_mask.shape[0], targets_mask.shape[1], 1)
+        input_data = whole_data[:, :-1, :-n_targets]
+        targets = whole_data[:, 1:, -n_targets:]
+        targets = targets.reshape(targets.shape[0], targets.shape[1], n_targets)
+        input_data_mask = mask[:, :-1, :-n_targets]
+        targets_mask = mask[:, 1:, -n_targets:]
+        targets_mask = targets_mask.reshape(targets_mask.shape[0], targets_mask.shape[1], n_targets)
 
         assert input_data.shape == input_data_mask.shape
         assert targets.shape == targets_mask.shape
 
-        dump_pickle(input_data, get_pickle_file_path(f'{name}_data', target, output_folder))
-        dump_pickle(targets, get_pickle_file_path(f'{name}_targets', target, output_folder))
-        dump_pickle(input_data_mask, get_pickle_file_path(f'{name}_data_mask', target, output_folder))
-        dump_pickle(targets_mask, get_pickle_file_path(f'{name}_targets_mask', target, output_folder))
+        dump_pickle(input_data, get_pickle_file_path(f'{name}_data', labels, output_folder))
+        dump_pickle(targets, get_pickle_file_path(f'{name}_targets', labels, output_folder))
+        dump_pickle(input_data_mask, get_pickle_file_path(f'{name}_data_mask', labels, output_folder))
+        dump_pickle(targets_mask, get_pickle_file_path(f'{name}_targets_mask', labels, output_folder))
 
-    def pre_process_and_save_files(self, target, n_time_steps, output_folder):
+    def pre_process_and_save_files(self, targets, n_time_steps, output_folder):
         """
         Run a pipeline that:
             creates the target column target
             splits the data into train, validation and test set
             Padds the entry to n_time_steps
             Persists the data onto the disk to output_folder
-        @param target: target column
+        @param targets: target column
         @param n_time_steps: number of time steps
         @param output_folder: target folder for saved files
         """
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
-        df, feature_names = self.create_target(target)
-        dump_pickle(feature_names, get_pickle_file_path('features', target, output_folder))
+        df, feature_names = self.create_target(targets)
+        dump_pickle(feature_names, get_pickle_file_path('features', targets, output_folder))
         df = filter_sequences(df, 2, n_time_steps, grouping_col=self.id_col)
-        train, val, test = self.split_and_normalize_data(df, train_percentage=0.6, val_percentage=0.2, undersample=True)
-
-        for dataset, name in [(train, 'train'), (val, 'validation'), (test, 'test')]:
+        train, test = self.split_and_normalize_data(df, train_percentage=0.8, undersample=True, n_targets=len(targets))
+        for dataset, name in [(train, 'train'), (test, 'test')]:
             whole_data, mask = self.pad_data(dataset, time_steps=n_time_steps)
-            self.save_data_to_disk(whole_data, mask, name, target, output_folder)
+            self.save_data_to_disk(whole_data, mask, name, targets, output_folder, n_targets=len(targets))
 
         print(f'Saved files to folder: {output_folder}')

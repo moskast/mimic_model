@@ -6,7 +6,7 @@ from modules.pad_sequences import get_seq_length_from_padded_seq
 
 
 class ComparisonLSTM(nn.Module):
-    def __init__(self, input_size, hidden_size=256, output_size=1, num_layers=1):
+    def __init__(self, input_size, hidden_size=256, output_size=1, num_layers=1, num_targets=1):
         """
         Init of LSTM class for comparison of NN vs LSTM to determine the need of time series
         @param input_size: number of input units
@@ -17,12 +17,14 @@ class ComparisonLSTM(nn.Module):
         super(ComparisonLSTM, self).__init__()
 
         self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers, batch_first=True)
-        self.dense = nn.Linear(hidden_size, output_size)
+
+        self.output_layers = nn.ModuleList([nn.Linear(hidden_size, output_size) for i in range(num_targets)])
 
         self.h_c = None
 
     def forward(self, features, h_c=None):
         n_timesteps = features.shape[1]
+        outputs = []
 
         seq_lengths = get_seq_length_from_padded_seq(features.clone().detach().cpu().numpy())
         features = pack_padded_sequence(features, seq_lengths, batch_first=True, enforce_sorted=False)
@@ -33,23 +35,26 @@ class ComparisonLSTM(nn.Module):
             intermediate, h_c = self.lstm(features, h, c)
         intermediate, _ = pad_packed_sequence(intermediate, batch_first=True, padding_value=0, total_length=n_timesteps)
 
-        intermediate = self.dense(intermediate)
+        for output_layer in self.output_layers:
+            output = output_layer(intermediate)
 
-        # Manually recreate Keras Masking
-        # In Keras masking a mask means the last non-masked input is used
-        for i in range(len(seq_lengths)):
-            pad_i = seq_lengths[i]
-            intermediate[i, pad_i:, :] = intermediate[i, pad_i - 1, :]
+            # Manually recreate Keras Masking
+            # In Keras masking a mask means the last non-masked input is used
+            for i in range(len(seq_lengths)):
+                pad_i = seq_lengths[i]
+                output[i, pad_i:, :] = output[i, pad_i - 1, :]
 
-        output = torch.sigmoid(intermediate)
+            output = torch.sigmoid(output)
+
+            outputs.append(output)
 
         self.h_c = h_c
 
-        return output
+        return outputs
 
 
 class ComparisonFNN(nn.Module):
-    def __init__(self, input_size, hidden_size=2250,  output_size=1):
+    def __init__(self, input_size, hidden_size=2250, output_size=1, num_targets=1):
         """
         Init of Feed Forward Neural Net class for comparison of NN vs LSTM to determine the need of time series
         @param input_size: number of input units
@@ -59,14 +64,17 @@ class ComparisonFNN(nn.Module):
         super(ComparisonFNN, self).__init__()
         self.model = nn.Sequential(
             nn.Linear(input_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, output_size)
+            nn.ReLU()
         )
-
-        self.attention = None
+        self.output_layers = nn.ModuleList([nn.Linear(hidden_size, output_size) for i in range(num_targets)])
 
     def forward(self, features):
-        logits = self.model(features)
-        output = torch.sigmoid(logits)
+        outputs = []
 
-        return output
+        intermediate = self.model(features)
+
+        for output_layer in self.output_layers:
+            output = torch.sigmoid(output_layer(intermediate))
+            outputs.append(output)
+
+        return outputs

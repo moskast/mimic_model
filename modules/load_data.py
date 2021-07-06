@@ -74,19 +74,21 @@ def load_data_sets(data_path, target, n_percentage, reduce_dimensions=False):
     training_data = training_data[0:int(n_percentage * training_data.shape[0])]  # Subsample if necessary
     training_targets = training_targets[0:int(n_percentage * training_targets.shape[0])]
 
-    n_features = training_data.shape[2]
+    n_features = training_data.shape[-1]
 
     if reduce_dimensions:
+        n_targets = training_targets.shape[-1]
+
         training_data = training_data.reshape(-1, n_features)  # Reshape to delete time dimension
         train_rows = ~np.all(training_data == 0, axis=1)
         training_data = training_data[train_rows]
-        training_targets = training_targets.reshape(-1, 1)
+        training_targets = training_targets.reshape(-1, n_targets)
         training_targets = training_targets[train_rows]
 
         validation_data = validation_data.reshape(-1, n_features)
         validation_rows = ~np.all(validation_data == 0, axis=1)
         validation_data = validation_data[validation_rows]
-        validation_targets = validation_targets.reshape(-1, 1)
+        validation_targets = validation_targets.reshape(-1, n_targets)
         validation_targets = validation_targets[validation_rows]
 
     train_dataset = TensorDataset(torch.tensor(training_data, dtype=torch.float),
