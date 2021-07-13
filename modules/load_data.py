@@ -63,12 +63,10 @@ def load_data_sets(data_path, target, n_percentage, reduce_dimensions=False):
     @param target: variable to predict
     @param n_percentage: percentage of full data to use
     @param reduce_dimensions: whether to reduce the time dimension
-    @return: train and validation data as Pytorch datasets as well as the number of features
+    @return: train data as Pytorch dataset as well as the number of features
     """
     training_data = load_pickle(get_pickle_file_path('train_data', target, data_path))
     training_targets = load_pickle(get_pickle_file_path('train_targets', target, data_path))
-    validation_data = load_pickle(get_pickle_file_path('validation_data', target, data_path))
-    validation_targets = load_pickle(get_pickle_file_path('validation_targets', target, data_path))
 
     # N_Samples x Seq_Length x N_Features
     training_data = training_data[0:int(n_percentage * training_data.shape[0])]  # Subsample if necessary
@@ -85,15 +83,7 @@ def load_data_sets(data_path, target, n_percentage, reduce_dimensions=False):
         training_targets = training_targets.reshape(-1, n_targets)
         training_targets = training_targets[train_rows]
 
-        validation_data = validation_data.reshape(-1, n_features)
-        validation_rows = ~np.all(validation_data == 0, axis=1)
-        validation_data = validation_data[validation_rows]
-        validation_targets = validation_targets.reshape(-1, n_targets)
-        validation_targets = validation_targets[validation_rows]
-
     train_dataset = TensorDataset(torch.tensor(training_data, dtype=torch.float),
                                   torch.tensor(training_targets, dtype=torch.float))
-    val_dataset = TensorDataset(torch.tensor(validation_data, dtype=torch.float),
-                                torch.tensor(validation_targets, dtype=torch.float))
 
-    return train_dataset, val_dataset, n_features
+    return train_dataset, n_features

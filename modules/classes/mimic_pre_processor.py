@@ -20,7 +20,7 @@ class MimicPreProcessor(object):
     Creates Data Sets for Machine learning from a parsed mimic file
     """
 
-    def __init__(self, mimic_file_path, id_col='hadm_id', random_seed=42):
+    def __init__(self, mimic_file_path, id_col='hadm_id', random_seed=0):
         self.parsed_mimic = pd.read_csv(mimic_file_path)
         self.id_col = id_col
         self.random_seed = random_seed

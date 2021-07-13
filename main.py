@@ -25,31 +25,29 @@ def train_models(mimic_version, data_path, n_time_steps, random_seed, train_comp
     print(f'\nTarget: {targets}')
     for p in get_percentages():
         print(f'Percentage: {p}')
-        train_dataset, val_dataset, n_features = load_data_sets(data_path, targets, p)
-        if train_comparison:
-            train_dataset_reduced, val_dataset_reduced, n_features_reduced = load_data_sets(data_path, targets, p, True)
+        train_dataset, n_features = load_data_sets(data_path, targets, p)
         common_model_id = f'_{mimic_version}_{targets}_{n_time_steps}_{random_seed}'
         if train_comparison:
-            model_id = 'comparison_LSTM' + common_model_id
-            model = ComparisonLSTM(n_features, num_targets=n_targets)
-            train_model(model_id, model, train_dataset, val_dataset, targets, seed=random_seed)
+
+            train_dataset_reduced, n_features_reduced = load_data_sets(data_path, targets, p, True)
             print('Training NN')
             model_id = 'comparison_FNN' + common_model_id
             model = ComparisonFNN(n_features_reduced, num_targets=n_targets)
-            train_model(model_id, model, train_dataset_reduced, val_dataset_reduced, targets, seed=random_seed)
-            print('Training LSTM')
+            train_model(model_id, model, train_dataset_reduced, targets, seed=random_seed)
+
+            models = [
+                ('comparison_LSTM', ComparisonLSTM(n_features, num_targets=n_targets)),
+                ('partial_attention_LSTM', AttentionLSTM(n_features, full_attention=False, num_targets=n_targets))]
 
         else:
             models = [
-                ('partial_attention_LSTM', AttentionLSTM(n_features, full_attention=False, num_targets=n_targets)),
                 ('full_attention_LSTM', AttentionLSTM(n_features, full_attention=True, num_targets=n_targets)),
                 ('hopfield_layer', HopfieldLayerModel(n_features, num_targets=n_targets)),
                 ('hopfield_pooling', HopfieldPoolingModel(n_features, num_targets=n_targets)),
-                ('hopfield_lookup',
-                 HopfieldLookupModel(n_features, int(len(train_dataset) / 1000), num_targets=n_targets))]
-            for model_name, model in models:
-                model_id = model_name + common_model_id
-                train_model(model_id, model, train_dataset, val_dataset, targets, seed=random_seed)
+                ('hopfield_lookup', HopfieldLookupModel(n_features, int(len(train_dataset) / 1000), num_targets=n_targets))]
+        for model_name, model in models:
+            model_id = model_name + common_model_id
+            train_model(model_id, model, train_dataset, targets, seed=random_seed)
 
         print(f'\rFinished training on {p * 100}% of data')
     print(f'\rFinished training on {random_seed=}')
@@ -57,7 +55,7 @@ def train_models(mimic_version, data_path, n_time_steps, random_seed, train_comp
     print(f'{end_time - start_time} seconds needed for training')
 
 
-def main(parse_mimic, pre_process_data, create_models, mimic_version, window_size, random_seed=42):
+def main(parse_mimic, pre_process_data, create_models, mimic_version, window_size, random_seed=0):
     """
     Main loop that process mimic db, preprocess data and trains models
     @param random_seed: random seed
@@ -103,7 +101,7 @@ def main(parse_mimic, pre_process_data, create_models, mimic_version, window_siz
         print(f'Created Datasets for {targets}\n')
 
     if create_models:
-        train_models(mimic_version, pickled_data_path, n_time_steps, random_seed, train_comparison=True)
+        train_models(mimic_version, pickled_data_path, n_time_steps, random_seed, train_comparison=False)
 
 
 if __name__ == "__main__":
@@ -112,6 +110,6 @@ if __name__ == "__main__":
     train = True
     mimic_v = 4
     window_s = 24
-    seed = 0
+    window_s = 12
 
-    main(parse, pre_process, train, mimic_v, window_s, seed)
+    main(parse, pre_process, train, mimic_v, window_s)
