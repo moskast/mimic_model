@@ -44,7 +44,7 @@ def pad_sequences(df, time_steps, pad_value, grouping_col='hadm_id'):
 def get_seq_length_from_padded_seq(sequences):
     """
     Finds out pre padded length of a batch of sequences
-    @param sequences: sequence from which original length should be infered
+    @param sequences: sequence from which original length should be inferred
     @return: original length list
     """
     max_len = sequences.shape[1]

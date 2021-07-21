@@ -18,7 +18,7 @@ class AttentionLSTM(nn.Module):
         """
         super(AttentionLSTM, self).__init__()
 
-        self.attention_layer = nn.Linear(input_size, input_size, bias=False)
+        self.attention_layer = nn.Linear(input_size, input_size, bias=True)
         self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers, batch_first=True)
 
         self.output_layers = nn.ModuleList([nn.Linear(hidden_size, output_size) for i in range(num_targets)])
@@ -52,20 +52,21 @@ class AttentionLSTM(nn.Module):
 
     def forward(self, features, h_c=None):
         n_timesteps = features.shape[1]
+        seq_lengths = get_seq_length_from_padded_seq(features.clone().detach().cpu().numpy())
         outputs = []
 
         # x is of shape batch_size x seq_length x n_features
         attention = self.attention_layer(features)
         if self.full_attention:
             attention = attention.reshape(features.shape[0], -1)
-        attention = torch.softmax(attention, dim=1)
-        if self.full_attention:
+            attention = torch.softmax(attention, dim=1)
             attention = attention.reshape(features.shape[0], features.shape[1], features.shape[2])
+        else:
+            attention = torch.softmax(attention, dim=1)
         # Save a to attention variable for being able to return it later
         self.attention = attention.clone().detach().cpu().numpy()
         features = attention * features
 
-        seq_lengths = get_seq_length_from_padded_seq(features.clone().detach().cpu().numpy())
         features = pack_padded_sequence(features, seq_lengths, batch_first=True, enforce_sorted=False)
         if h_c is None:
             intermediate, h_c = self.lstm(features)

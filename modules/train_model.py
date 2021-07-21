@@ -65,13 +65,18 @@ def evaluate(model, metric, data_loader, device='cpu'):
     return metrics
 
 
-def train_model(model_name, og_model, dataset, targets, epochs=10, batch_size=16, lr=0.001, k_folds=5, seed=0):
+def write_metric_list(writer, path, metrics, epoch, targets):
+    writer.add_scalar(f'{path}/Compound', metrics.mean(), epoch)
+    for i in range(len(targets)):
+        writer.add_scalar(f'{path}{targets[i]}', metrics[i], epoch)
+
+
+def train_model(model_name, og_model, dataset, targets, epochs=5, batch_size=512, lr=1e-3, k_folds=5, seed=0):
     """
     Training the model using parameter inputs
     @param model_name: Parameter used for naming the checkpoint_dir
     @param og_model: model to be trained
     @param dataset: training dataset
-    @param val_dataset: validation dataset
     @param targets:
     @param epochs: number of epochs to train
     @param batch_size: batch size
@@ -80,24 +85,25 @@ def train_model(model_name, og_model, dataset, targets, epochs=10, batch_size=16
     @param seed: random seed
     """
     torch.manual_seed(seed)
-    target_range = range(len(targets))
     base_dir = './output/models'
     checkpoint_dir = f'{base_dir}/best_models'
     final_model_dir = f'{base_dir}/fully_trained_models'
     logs_dir = f'./output/logs'
+    writer_path_train = 'Loss/train/'
+    writer_path_val = 'Loss/val/'
     for directory in [checkpoint_dir, final_model_dir, logs_dir]:
         if not os.path.exists(directory):
             os.makedirs(directory)
 
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-    best_epochs = torch.zeros(k_folds)
 
     kfold = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
     start_time = time()
     print(f'Training model {model_name} with {count_parameters(og_model)} parameters using {device}')
     for fold, (train_ids, test_ids) in enumerate(kfold.split(dataset)):
         writer = SummaryWriter(log_dir=f'{logs_dir}/{model_name}_{fold}_{time()}.log')
-        train_subsampler = torch.utils.data.SubsetRandomSampler(train_ids)
+       # id_len = len(train_ids)
+        train_subsampler = torch.utils.data.SubsetRandomSampler(train_ids)#[:id_len//25]
         val_subsampler = torch.utils.data.SubsetRandomSampler(test_ids)
         train_data_loader = DataLoader(dataset, sampler=train_subsampler, batch_size=batch_size)
         val_data_loader = DataLoader(dataset, sampler=val_subsampler, batch_size=batch_size)
@@ -106,44 +112,27 @@ def train_model(model_name, og_model, dataset, targets, epochs=10, batch_size=16
         optimizer = RMSprop(model.parameters(), lr=lr, alpha=0.9)
 
         best_val_loss = math.inf
+
+        """train_losses = evaluate(model, F.binary_cross_entropy, train_data_loader, device)
+        val_losses = evaluate(model, F.binary_cross_entropy, val_data_loader, device)
+
+        write_metric_list(writer, writer_path_train, train_losses, 0, targets)
+        write_metric_list(writer, writer_path_val, val_losses, 0, targets)"""
+
         print(f'\nTraining fold {fold + 1} out of {k_folds}')
         for epoch in range(1, epochs + 1):
             train_losses = update(model, F.binary_cross_entropy, train_data_loader, optimizer, device)
             val_losses = evaluate(model, F.binary_cross_entropy, val_data_loader, device)
+
+            write_metric_list(writer, writer_path_train, train_losses, epoch, targets)
+            write_metric_list(writer, writer_path_val, val_losses, epoch, targets)
+
             val_loss = val_losses.mean()
-
-            writer.add_scalar(f'Loss/train/Compound', train_losses.mean(), epoch)
-            writer.add_scalar(f'Loss/val/Compound', val_loss, epoch)
-            for i in target_range:
-                writer.add_scalar(f'Loss/train/{targets[i]}', train_losses[i], epoch)
-                writer.add_scalar(f'Loss/val/{targets[i]}', val_losses[i], epoch)
-
             if val_loss < best_val_loss:
-                best_epochs[fold] = epoch
                 best_val_loss = val_loss
                 torch.save(model, f'{checkpoint_dir}/{model_name}_{fold}.h5')
             torch.save(model, f'./{final_model_dir}/{model_name}_{fold}.h5')
             print(f'\rEpoch {epoch:02d} out of {epochs} with loss {val_loss}', end=" ")
-
-    writer = SummaryWriter(log_dir=f'{logs_dir}/{model_name}_{time()}.log')
-    train_data_loader = DataLoader(dataset, batch_size=batch_size)
-
-    model = copy.deepcopy(og_model).to(device)
-    optimizer = RMSprop(model.parameters(), lr=lr, alpha=0.9)
-
-    best_epoch = int(torch.mode(best_epochs)[0].item())
-    print(f'\nTraining with all data for {best_epoch} epochs')
-    print(best_epochs)
-    for epoch in range(1, best_epoch + 1):
-        train_losses = update(model, F.binary_cross_entropy, train_data_loader, optimizer, device)
-
-        writer.add_scalar(f'Loss/train/Compound', train_losses.mean(), epoch)
-        for i in target_range:
-            writer.add_scalar(f'Loss/train/{targets[i]}', train_losses[i], epoch)
-
-        torch.save(model, f'{checkpoint_dir}/{model_name}.h5')
-        print(f'\rEpoch {epoch:02d} out of {best_epoch} with train loss {train_losses.mean()}', end=" ")
-    torch.save(model, f'./{final_model_dir}/{model_name}.h5')
 
     print(f'\nTraining took {time() - start_time} seconds')
 
