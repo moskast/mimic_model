@@ -79,7 +79,7 @@ class AttentionLSTM(nn.Module):
             output = output_layer(intermediate)
 
             # Manually recreate Keras Masking
-            # In Keras masking a mask means the last non-masked input is used
+            # In Keras masking means the last non-masked input is used
             for i in range(len(seq_lengths)):
                 pad_i = seq_lengths[i]
                 output[i, pad_i:, :] = output[i, pad_i - 1, :]

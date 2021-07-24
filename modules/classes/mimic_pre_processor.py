@@ -50,20 +50,51 @@ class MimicPreProcessor(object):
 
         df = df.drop(trivial_features, axis=1, errors='ignore')
         df = df.select_dtypes(exclude=['object'])
-        feature_names = list(df.columns[:-len(targets)])
 
-        # Only remove id_col from features because it is needed later
-        feature_names.remove(self.id_col)
         print(f'Created target {targets}')
 
-        return df, feature_names
+        return df
 
-    def split_and_normalize_data(self, df, train_percentage, undersample=True, n_targets=1):
+    def balance_data_set(self, train_data, n_targets):
+        # Get the number of patients with at least one positive day for each target then take the sum
+        patients_grouped = train_data.groupby(self.id_col)
+        n_pos_per_patient = patients_grouped.agg('sum').iloc[:, -n_targets:]
+        n_pos_per_patient = n_pos_per_patient - patients_grouped.first().iloc[:, -n_targets:]
+        i_target = (n_pos_per_patient != 0).sum(axis=0).argmax()
+
+        pos_ids = np.array(n_pos_per_patient[n_pos_per_patient.iloc[:, i_target] != 0].index)
+        neg_rows = n_pos_per_patient[n_pos_per_patient.iloc[:, i_target] == 0].sum(axis=1)
+        neg_pos_ids = np.array(neg_rows[neg_rows != 0].index) #Neg in i_target but pos in other targets
+        neg_ids = np.array(neg_rows[neg_rows == 0].index)
+
+        np.random.shuffle(pos_ids)
+        np.random.shuffle(neg_pos_ids)
+        np.random.shuffle(neg_ids)
+
+        print(len(neg_pos_ids), len(neg_ids))
+        neg_ids = np.concatenate([neg_pos_ids, neg_ids])
+
+        if pos_ids.shape[0] < neg_ids.shape[0]:
+            minority_class = pos_ids
+            majority_class = neg_ids
+        else:
+            minority_class = neg_ids
+            majority_class = pos_ids
+        length = minority_class.shape[0]
+
+        total_ids = np.hstack([minority_class[:length], majority_class[:length]])
+        np.random.shuffle(total_ids)
+
+        print(f'{i_target=} {len(pos_ids)=} - {len(neg_ids)=} - {len(total_ids)=}')
+        print('Balanced training data by undersampling')
+        return train_data[train_data[self.id_col].isin(total_ids)]
+
+    def split_and_normalize_data(self, df, train_percentage, balance_set=True, n_targets=1):
         """
         Splits data into train and test set. Then applies normalization as well as undersampling (if specified)
         @param df: data to be split
         @param train_percentage: percentage of training samples
-        @param undersample: whether to apply undersampling
+        @param balance_set: whether to apply undersampling
         @param n_targets: number of targets
         @return: train, validation and test set
         """
@@ -76,24 +107,32 @@ class MimicPreProcessor(object):
         train_data = df[df[self.id_col].isin(train_keys)]
         test_data = df[df[self.id_col].isin(test_keys)]
 
-        if undersample and n_targets == 1:
-            positive_rows = train_data.iloc[:, -1] == 1
-            pos_ids = np.unique(train_data[positive_rows][self.id_col])
-            np.random.shuffle(pos_ids)
-            # Because the first check checks for positive labels per day most ids will also show up here
-            # That is why the second term is needed
-            neg_ids = np.unique(train_data[~positive_rows & ~(train_data[self.id_col].isin(pos_ids))][self.id_col])
-            np.random.shuffle(neg_ids)
-            length = min(pos_ids.shape[0], neg_ids.shape[0])
-            total_ids = np.hstack([pos_ids[0:length], neg_ids[0:length]])
-            np.random.shuffle(total_ids)
-            train_data = df[df[self.id_col].isin(total_ids)]
-            print('Balanced training data by undersampling')
+        if balance_set:
+            train_data = self.balance_data_set(train_data, n_targets)
 
-        means = train_data.iloc[:, :-n_targets].mean(axis=0)
-        stds = train_data.iloc[:, :-n_targets].std(axis=0)
-        train_data.iloc[:, :-n_targets] = (train_data.iloc[:, :-n_targets] - means) / stds
-        test_data.iloc[:, :-n_targets] = (test_data.iloc[:, :-n_targets] - means) / stds
+        # +1 to also exclude the id col
+        subset = train_data.iloc[:, :-(n_targets + 1)]
+        means = subset.mean(axis=0)
+        stds = subset.std(axis=0)
+
+        # For constant columns.
+        # Do not delete them because std is calculated on the train set ==> do not know if it is truly constant
+        zero_var_features = list(stds[stds <= 0].index)
+        print(f'{len(zero_var_features)} features will be dropped due to their low variance')
+        print(zero_var_features)
+        train_data = train_data.drop(zero_var_features, axis=1, errors='ignore')
+        test_data = test_data.drop(zero_var_features, axis=1, errors='ignore')
+
+        train_data.iloc[:, :-(n_targets + 1)] = (subset - means) / stds
+        test_data.iloc[:, :-(n_targets + 1)] = (test_data.iloc[:, :-(n_targets + 1)] - means) / stds
+
+        print(f'{train_data.shape=} - {test_data.shape=}')
+
+        if np.isnan(train_data).any().any():
+            raise Exception('NaN Values remain in Train data')
+        if np.isnan(test_data).any().any():
+            raise Exception('NaN Values remain in Test data')
+
         return train_data, test_data
 
     def pad_data(self, df, time_steps, pad_value=0):
@@ -126,6 +165,7 @@ class MimicPreProcessor(object):
         @param name: name of the files
         @param labels: target column(s)
         @param output_folder: target folder for saved files
+        @param n_targets:
         """
         # Because the targets are for the same day shift the targets by one and ignore the last day
         # because no targets exist
@@ -138,6 +178,11 @@ class MimicPreProcessor(object):
 
         assert input_data.shape == input_data_mask.shape
         assert targets.shape == targets_mask.shape
+
+        n_pos = np.count_nonzero(targets.sum(axis=1), axis=0)
+        print(name)
+        print(f'Number of positive patients {n_pos}')
+        print(f'Number of neg patients {whole_data.shape[0] - n_pos}')
 
         dump_pickle(input_data, get_pickle_file_path(f'{name}_data', labels, output_folder))
         dump_pickle(targets, get_pickle_file_path(f'{name}_targets', labels, output_folder))
@@ -157,10 +202,14 @@ class MimicPreProcessor(object):
         """
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
-        df, feature_names = self.create_target(targets)
-        dump_pickle(feature_names, get_pickle_file_path('features', targets, output_folder))
+        df = self.create_target(targets)
         df = filter_sequences(df, 2, n_time_steps, grouping_col=self.id_col)
-        train, test = self.split_and_normalize_data(df, train_percentage=0.8, undersample=True, n_targets=len(targets))
+        train, test = self.split_and_normalize_data(df, train_percentage=0.8, balance_set=True, n_targets=len(targets))
+
+        feature_names = list(train.columns[:-len(targets)])
+        feature_names.remove(self.id_col)
+        dump_pickle(feature_names, get_pickle_file_path('features', targets, output_folder))
+
         for dataset, name in [(train, 'train'), (test, 'test')]:
             whole_data, mask = self.pad_data(dataset, time_steps=n_time_steps)
             self.save_data_to_disk(whole_data, mask, name, targets, output_folder, n_targets=len(targets))

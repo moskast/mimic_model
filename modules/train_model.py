@@ -13,7 +13,9 @@ from torch.utils.tensorboard import SummaryWriter
 
 def multi_task_losses(predicted_targets, targets, loss_function):
     losses = []
-
+    # Vancomycin, MI, Sepsis
+    weights = [1, 4, 15]
+    #weights = [1, 1, 1]
     for i in range(targets.shape[-1]):
         if len(targets.shape) == 3:
             predicted_target = predicted_targets[i][:, :, 0]
@@ -21,7 +23,7 @@ def multi_task_losses(predicted_targets, targets, loss_function):
         else:
             predicted_target = predicted_targets[i][:, 0]
             target = targets[:, i]
-        losses.append(loss_function(predicted_target, target))
+        losses.append(loss_function(predicted_target, target)/weights[i])
 
     return torch.stack(losses)
 
@@ -44,7 +46,7 @@ def update(model, loss_function, data_loader, optimizer, device='cpu'):
         optimizer.zero_grad()
         predicted_targets = model(input_data)
         losses = multi_task_losses(predicted_targets, targets, loss_function)
-        losses.mean().backward()
+        losses.sum(axis=0).backward()
         optimizer.step()
         train_loss.append(losses)
     train_losses = torch.stack(train_loss).mean(axis=0).detach()
@@ -66,12 +68,12 @@ def evaluate(model, metric, data_loader, device='cpu'):
 
 
 def write_metric_list(writer, path, metrics, epoch, targets):
-    writer.add_scalar(f'{path}/Compound', metrics.mean(), epoch)
+    writer.add_scalar(f'{path}/Compound', metrics.sum(), epoch)
     for i in range(len(targets)):
         writer.add_scalar(f'{path}{targets[i]}', metrics[i], epoch)
 
 
-def train_model(model_name, og_model, dataset, targets, epochs=5, batch_size=512, lr=1e-3, k_folds=5, seed=0):
+def train_model(model_name, og_model, dataset, targets, epochs=10, batch_size=128, lr=1e-3, k_folds=5, seed=0):
     """
     Training the model using parameter inputs
     @param model_name: Parameter used for naming the checkpoint_dir
@@ -127,7 +129,7 @@ def train_model(model_name, og_model, dataset, targets, epochs=5, batch_size=512
             write_metric_list(writer, writer_path_train, train_losses, epoch, targets)
             write_metric_list(writer, writer_path_val, val_losses, epoch, targets)
 
-            val_loss = val_losses.mean()
+            val_loss = val_losses.sum()
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 torch.save(model, f'{checkpoint_dir}/{model_name}_{fold}.h5')
