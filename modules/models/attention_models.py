@@ -84,7 +84,7 @@ class AttentionLSTM(nn.Module):
                 pad_i = seq_lengths[i]
                 output[i, pad_i:, :] = output[i, pad_i - 1, :]
 
-            output = torch.sigmoid(output)
+            # output = torch.sigmoid(output)
 
             outputs.append(output)
 

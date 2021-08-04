@@ -1,26 +1,27 @@
 import time
 from modules.classes.mimic_parser import MimicParser
 from modules.classes.mimic_pre_processor import MimicPreProcessor
-from modules.experiment_config import get_targets, get_percentages, get_seeds
+from modules.experiment_config import get_targets, get_percentages, get_seeds, get_mimic_version, get_window_size, \
+    get_random_seed, get_train_single_targets, get_train_comparison
 from modules.load_data import load_data_sets, get_pickle_folder
 from modules.models.attention_models import AttentionLSTM
 from modules.models.comparison_models import ComparisonLSTM, ComparisonFNN
-from modules.models.hopfield_models import HopfieldLayerModel, HopfieldPoolingModel, HopfieldLookupModel
+from modules.models.hopfield_models import HopfieldLayerModel, HopfieldPoolingModel, HopfieldLookupModel, HopfieldLSTM
 from modules.train_model import train_model
 
 
-def train_models(mimic_version, data_path, n_time_steps, random_seed, train_comparison=True):
+def train_models(mimic_version, data_path, n_time_steps, random_seed, targets, train_comparison):
     """
     Training loop for training models with targets and percentages
     @param mimic_version: which mimic version to use 3 or 4
     @param data_path: path to data for the experiments
     @param n_time_steps: number of time step for one sample
     @param random_seed: seed for setting random functions
+    @param targets:
     @param train_comparison: whether to train for NN-LSTM comparison or benchmark experiment
     """
     start_time = time.time()
     print(f'{data_path=}')
-    targets = get_targets()
     n_targets = len(targets)
     print(f'\nTarget: {targets}')
     for p in get_percentages():
@@ -28,7 +29,6 @@ def train_models(mimic_version, data_path, n_time_steps, random_seed, train_comp
         train_dataset, n_features = load_data_sets(data_path, targets, p)
         common_model_id = f'_{mimic_version}_{targets}_{n_time_steps}_{random_seed}'
         if train_comparison:
-
             train_dataset_reduced, n_features_reduced = load_data_sets(data_path, targets, p, True)
             print('Training NN')
             model_id = 'comparison_FNN' + common_model_id
@@ -36,15 +36,19 @@ def train_models(mimic_version, data_path, n_time_steps, random_seed, train_comp
             train_model(model_id, model, train_dataset_reduced, targets, seed=random_seed)
 
             models = [
-                ('comparison_LSTM', ComparisonLSTM(n_features, num_targets=n_targets)),
-                ('partial_attention_LSTM', AttentionLSTM(n_features, full_attention=False, num_targets=n_targets))]
+                ('comparison_LSTM', ComparisonLSTM(n_features, num_targets=n_targets))]
 
         else:
             models = [
-                ('full_attention_LSTM', AttentionLSTM(n_features, full_attention=True, num_targets=n_targets)),
-                ('hopfield_layer', HopfieldLayerModel(n_features, num_targets=n_targets)),
-                ('hopfield_pooling', HopfieldPoolingModel(n_features, num_targets=n_targets)),
-                ('hopfield_lookup', HopfieldLookupModel(n_features, int(len(train_dataset) / 1000), num_targets=n_targets))]
+                ('partial_attention_LSTM', AttentionLSTM(n_features, full_attention=False, num_targets=n_targets)),
+                ('full_attention_LSTM', AttentionLSTM(n_features, full_attention=True, num_targets=n_targets))  ,
+                ('partial_hopfield_LSTM', HopfieldLSTM(n_features, full_attention=False, num_targets=n_targets)),
+                ('full_hopfield_LSTM', HopfieldLSTM(n_features, full_attention=True, num_targets=n_targets))# ,
+                # ('hopfield_layer', HopfieldLayerModel(n_features, num_targets=n_targets)),
+                # ('hopfield_pooling', HopfieldPoolingModel(n_features, num_targets=n_targets)),
+                # ('hopfield_lookup', HopfieldLookupModel(n_features, int(len(train_dataset) / 10000), num_targets=n_targets))
+            ]
+
         for model_name, model in models:
             model_id = model_name + common_model_id
             train_model(model_id, model, train_dataset, targets, seed=random_seed)
@@ -55,7 +59,7 @@ def train_models(mimic_version, data_path, n_time_steps, random_seed, train_comp
     print(f'{end_time - start_time} seconds needed for training')
 
 
-def main(parse_mimic, pre_process_data, create_models, mimic_version, window_size, random_seed=0):
+def main(parse_mimic, pre_process_data, create_models):
     """
     Main loop that process mimic db, preprocess data and trains models
     @param random_seed: random seed
@@ -66,6 +70,9 @@ def main(parse_mimic, pre_process_data, create_models, mimic_version, window_siz
     @param window_size: number of hours for one time step
     """
 
+    mimic_version = get_mimic_version()
+    window_size = get_window_size()
+    random_seed = get_random_seed()
     print('Start Program')
     print(f'Mimic Version {mimic_version}')
     original_mimic_folder = f'./data/mimic_{mimic_version}_database'
@@ -85,6 +92,7 @@ def main(parse_mimic, pre_process_data, create_models, mimic_version, window_siz
     n_time_steps = int((24 // window_size) * 14)
     pickled_data_path = get_pickle_folder(mimic_version, n_time_steps, random_seed)
 
+    targets = get_targets()
     # Preprocess Mimic
     if pre_process_data:
         print('Preprocess Data')
@@ -93,7 +101,6 @@ def main(parse_mimic, pre_process_data, create_models, mimic_version, window_siz
         else:
             parsed_mimic_filepath = mimic_parser.aii_path + '.csv'
 
-        targets = get_targets()
         mimic_pre_processor = MimicPreProcessor(parsed_mimic_filepath, random_seed=random_seed)
 
         print(f'Creating Datasets for {targets}')
@@ -101,15 +108,15 @@ def main(parse_mimic, pre_process_data, create_models, mimic_version, window_siz
         print(f'Created Datasets for {targets}\n')
 
     if create_models:
-        train_models(mimic_version, pickled_data_path, n_time_steps, random_seed, train_comparison=False)
+        train_models(mimic_version, pickled_data_path, n_time_steps, random_seed, targets, get_train_comparison())
+        if get_train_single_targets() and len(targets) > 1:
+            for target in targets:
+                train_models(mimic_version, pickled_data_path, n_time_steps, random_seed, [target], get_train_comparison())
 
 
 if __name__ == "__main__":
     parse = False
     pre_process = False
     train = True
-    mimic_v = 4
-    window_s = 24
-    window_s = 12
 
-    main(parse, pre_process, train, mimic_v, window_s)
+    main(parse, pre_process, train)

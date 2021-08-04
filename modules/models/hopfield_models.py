@@ -87,7 +87,7 @@ class HopfieldLookupModel(nn.Module):
 
 
 class HopfieldLSTM(nn.Module):
-    def __init__(self, input_size, hidden_size=200, output_size=1, num_layers=1, num_targets=1, full_attention=True):
+    def __init__(self, input_size, hidden_size=256, output_size=1, num_layers=1, num_targets=1, full_attention=True):
         """
         LSTM model which incorporates an attention mechanism
         @param input_size: number of input units
@@ -164,7 +164,7 @@ class HopfieldLSTM(nn.Module):
                 pad_i = seq_lengths[i]
                 output[i, pad_i:, :] = output[i, pad_i - 1, :]
 
-            output = torch.sigmoid(output)
+            # output = torch.sigmoid(output)
 
             outputs.append(output)
 
