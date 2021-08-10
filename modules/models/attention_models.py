@@ -50,11 +50,10 @@ class AttentionLSTM(nn.Module):
             start, end = n // 4, n // 2
             t[start:end].fill_(1.)
 
-    def forward(self, features, h_c=None):
+    def forward(self, features, h_c=None, apply_activation=False):
         n_timesteps = features.shape[1]
         seq_lengths = get_seq_length_from_padded_seq(features.clone().detach().cpu().numpy())
         outputs = []
-
         # x is of shape batch_size x seq_length x n_features
         attention = self.attention_layer(features)
         if self.full_attention:
@@ -84,7 +83,8 @@ class AttentionLSTM(nn.Module):
                 pad_i = seq_lengths[i]
                 output[i, pad_i:, :] = output[i, pad_i - 1, :]
 
-            # output = torch.sigmoid(output)
+            if apply_activation:
+                output = torch.sigmoid(output)
 
             outputs.append(output)
 

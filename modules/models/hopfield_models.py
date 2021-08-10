@@ -20,13 +20,15 @@ class HopfieldLayerModel(nn.Module):
         self.output_layers = nn.ModuleList(
             [nn.Linear(self.hopfield.output_size, output_size) for i in range(num_targets)])
 
-    def forward(self, features):
+    def forward(self, features, apply_activation=False):
         outputs = []
 
         intermediate = self.hopfield(features)
 
         for output_layer in self.output_layers:
-            output = torch.sigmoid(output_layer(intermediate))
+            output = output_layer(intermediate)
+            if apply_activation:
+                output = torch.sigmoid(output)
             outputs.append(output)
 
         return outputs
@@ -46,13 +48,15 @@ class HopfieldPoolingModel(nn.Module):
         self.output_layers = nn.ModuleList(
             [nn.Linear(self.hopfield_pooling.output_size, output_size) for i in range(num_targets)])
 
-    def forward(self, features):
+    def forward(self, features, apply_activation=False):
         outputs = []
         intermediate = self.hopfield_pooling(features)
         intermediate = intermediate.reshape(features.shape[0], features.shape[1], features.shape[2])
 
         for output_layer in self.output_layers:
-            output = torch.sigmoid(output_layer(intermediate))
+            output = output_layer(intermediate)
+            if apply_activation:
+                output = torch.sigmoid(output)
             outputs.append(output)
 
         return outputs
@@ -74,13 +78,15 @@ class HopfieldLookupModel(nn.Module):
         self.output_layers = nn.ModuleList(
             [nn.Linear(self.hopfield_lookup.output_size, output_size) for i in range(num_targets)])
 
-    def forward(self, features):
+    def forward(self, features, apply_activation=False):
         outputs = []
 
         intermediate = self.hopfield_lookup(features)
 
         for output_layer in self.output_layers:
-            output = torch.sigmoid(output_layer(intermediate))
+            output = output_layer(intermediate)
+            if apply_activation:
+                output = torch.sigmoid(output)
             outputs.append(output)
 
         return outputs
@@ -131,7 +137,7 @@ class HopfieldLSTM(nn.Module):
             start, end = n // 4, n // 2
             t[start:end].fill_(1.)
 
-    def forward(self, features, h_c=None):
+    def forward(self, features, h_c=None, apply_activation=False):
         n_timesteps = features.shape[1]
         seq_lengths = get_seq_length_from_padded_seq(features.clone().detach().cpu().numpy())
         outputs = []
@@ -164,7 +170,8 @@ class HopfieldLSTM(nn.Module):
                 pad_i = seq_lengths[i]
                 output[i, pad_i:, :] = output[i, pad_i - 1, :]
 
-            # output = torch.sigmoid(output)
+            if apply_activation:
+                output = torch.sigmoid(output)
 
             outputs.append(output)
 

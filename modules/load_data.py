@@ -3,6 +3,7 @@ import pickle
 import numpy as np
 import torch
 from torch.utils.data import TensorDataset
+import xgboost as xgb
 
 
 def dump_pickle(variable, path):
@@ -47,13 +48,23 @@ def get_pickle_file_path(file_name, target, folder='.output/pickled_data_sets'):
     return f'{folder}/{target}_{file_name}.pickle'
 
 
-def return_loaded_model(model_name):
-    """
-    Loads a saved pytorch model from the disk
-    @param model_name: name of the .h5 file
-    @return: pytorch model
-    """
-    return torch.load("./output/models/best_models/{0}.h5".format(model_name))
+def load_model(model_name, path='./output/models/best_models/'):
+    if 'xgb' in model_name.lower():
+        model = load_xgb_model(path + model_name + '.model')
+    else:
+        model = load_pytorch_model(path + model_name + '.h5').cpu()
+        model = model.eval()
+    return model
+
+
+def load_xgb_model(path):
+    bst = xgb.Booster()
+    bst.load_model(path)
+    return bst
+
+
+def load_pytorch_model(path):
+    return torch.load(path)
 
 
 def load_data_sets(data_path, target, n_percentage, reduce_dimensions=False):

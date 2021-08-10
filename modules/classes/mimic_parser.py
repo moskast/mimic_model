@@ -96,7 +96,7 @@ class MimicParser(object):
 
         print(f"\r Finished reducing chart events")
 
-    def create_day_blocks(self):
+    def create_day_blocks(self, create_statistics=False):
         """
         Create the time feature as well as std, min and max
         """
@@ -115,42 +115,37 @@ class MimicParser(object):
         print("New feature features")
 
         hadm_dict = dict(zip(df['hadmid_day'], df['subject_id']))
-        print("Start statistics")
         df2 = pd.pivot_table(df, index='hadmid_day', columns='features',
                              values='valuenum', fill_value=np.nan)
-        df3 = pd.pivot_table(df, index='hadmid_day', columns='features',
-                             values='valuenum', aggfunc=lambda x: np.std(x), fill_value=0)
-        df3.columns = ["{0}_std".format(i) for i in list(df2.columns)]
-        print("std finished")
-        df4 = pd.pivot_table(df, index='hadmid_day', columns='features',
-                             values='valuenum', aggfunc=np.amin, fill_value=np.nan)
-        df4.columns = ["{0}_min".format(i) for i in list(df2.columns)]
-        print("min finished")
-        df5 = pd.pivot_table(df, index='hadmid_day', columns='features',
-                             values='valuenum', aggfunc=np.amax, fill_value=np.nan)
-        df5.columns = ["{0}_max".format(i) for i in list(df2.columns)]
-        print("max finished")
-        df2 = pd.concat([df2, df3, df4, df5], axis=1)
+        print("Start statistics")
+        if create_statistics:
+            df3 = pd.pivot_table(df, index='hadmid_day', columns='features',
+                                 values='valuenum', aggfunc=lambda x: np.std(x), fill_value=0)
+            df3.columns = ["{0}_std".format(i) for i in list(df2.columns)]
+            print("std finished")
+            df4 = pd.pivot_table(df, index='hadmid_day', columns='features',
+                                 values='valuenum', aggfunc=np.amin, fill_value=np.nan)
+            df4.columns = ["{0}_min".format(i) for i in list(df2.columns)]
+            print("min finished")
+            df5 = pd.pivot_table(df, index='hadmid_day', columns='features',
+                                 values='valuenum', aggfunc=np.amax, fill_value=np.nan)
+            df5.columns = ["{0}_max".format(i) for i in list(df2.columns)]
+            print("max finished")
+            df2 = pd.concat([df2, df3, df4, df5], axis=1)
         df2.columns = df2.columns.str.lower()
 
         if 'tobacco' in df2.columns:
             df2['tobacco'].apply(lambda x: np.around(x))
-            del df2['tobacco_std']
-            del df2['tobacco_min']
-            del df2['tobacco_max']
+            df2 = df2.drop(['tobacco_std', 'tobacco_min', 'tobacco_max'], axis=1, errors='ignore')
 
-        del df2['daily weight_std']
-        del df2['daily weight_min']
-        del df2['daily weight_max']
+        df2 = df2.drop(['daily weight_std', 'daily weight_min', 'daily weight_max'], axis=1, errors='ignore')
 
         rel_columns = [i for i in list(df2.columns) if '_' not in i]
 
         for col in rel_columns:
             if len(np.unique(df2[col])[np.isfinite(np.unique(df2[col]))]) <= 2:
                 print(col)
-                del df2[col + '_std']
-                del df2[col + '_min']
-                del df2[col + '_max']
+                df2 = df2.drop([col + '_std', col + '_min', col + '_max'], axis=1, errors='ignore')
 
         for i in list(df2.columns):
             df2[i][df2[i] > df2[i].quantile(.95)] = df2[i].median()
@@ -163,10 +158,7 @@ class MimicParser(object):
             df2['inr_std'] = df2['inr_std'] + df2['pt_std']
             df2['inr_min'] = df2['inr_min'] + df2['pt_min']
             df2['inr_max'] = df2['inr_max'] + df2['pt_max']
-            del df2['pt']
-            del df2['pt_std']
-            del df2['pt_min']
-            del df2['pt_max']
+            df2 = df2.drop(['pt', 'pt_std', 'pt_min', 'pt_max'], axis=1, errors='ignore')
 
         df2.dropna(thresh=int(0.75 * len(df2.columns)), axis=0, inplace=True)
         df2.to_csv(self.cdb_path + '.csv', index=False)

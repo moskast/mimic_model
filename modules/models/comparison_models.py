@@ -22,7 +22,7 @@ class ComparisonLSTM(nn.Module):
 
         self.h_c = None
 
-    def forward(self, features, h_c=None):
+    def forward(self, features, h_c=None, apply_activation=False):
         n_timesteps = features.shape[1]
         outputs = []
 
@@ -44,7 +44,8 @@ class ComparisonLSTM(nn.Module):
                 pad_i = seq_lengths[i]
                 output[i, pad_i:, :] = output[i, pad_i - 1, :]
 
-            output = torch.sigmoid(output)
+            if apply_activation:
+                output = torch.sigmoid(output)
 
             outputs.append(output)
 
@@ -68,13 +69,32 @@ class ComparisonFNN(nn.Module):
         )
         self.output_layers = nn.ModuleList([nn.Linear(hidden_size, output_size) for i in range(num_targets)])
 
-    def forward(self, features):
+    def forward(self, features, apply_activation=False):
         outputs = []
 
         intermediate = self.model(features)
 
         for output_layer in self.output_layers:
-            output = torch.sigmoid(output_layer(intermediate))
+            output = output_layer(intermediate)
+            if apply_activation:
+                output = torch.sigmoid(output)
+            outputs.append(output)
+
+        return outputs
+
+
+class ComparisonLogisticRegression(torch.nn.Module):
+    def __init__(self, input_size, output_size=1, num_targets=1):
+        super(ComparisonLogisticRegression, self).__init__()
+        self.output_layers = nn.ModuleList([nn.Linear(input_size, output_size) for i in range(num_targets)])
+
+    def forward(self, features, apply_activation=False):
+        outputs = []
+
+        for output_layer in self.output_layers:
+            output = output_layer(features)
+            if apply_activation:
+                output = torch.sigmoid(output)
             outputs.append(output)
 
         return outputs
