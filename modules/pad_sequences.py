@@ -51,8 +51,8 @@ def get_seq_length_from_padded_seq(sequences):
     length_list = []
     for item in sequences:
         length = max_len
-        indices = np.where(~item.any(axis=1))[0]
+        indices = np.where(item.any(axis=1))[0]
         if len(indices) > 0:
-            length = indices[0]
+            length = indices[-1] + 1
         length_list.append(length)
     return torch.tensor(length_list)
