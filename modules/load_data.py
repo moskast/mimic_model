@@ -5,6 +5,8 @@ import torch
 from torch.utils.data import TensorDataset
 import xgboost as xgb
 
+from modules.config import AppConfig
+
 
 def dump_pickle(variable, path):
     """
@@ -27,11 +29,43 @@ def load_pickle(path):
     return variable
 
 
-def get_pickle_folder(mimic_version, n_time_steps, seed=None):
+def get_output_directory(create_statistics=None, balance_data=None, oversample=None):
+    if create_statistics is None:
+        create_statistics = AppConfig.create_statistics
+    if balance_data is None:
+        balance_data = AppConfig.balance_data
+    if oversample is None:
+        oversample = AppConfig.oversample
+    stat = 'st' if create_statistics else 'ns'
+    bal = 'us' if balance_data else 'ub'
+    bal = 'os' if oversample else bal
+    return f'./output_{stat}_{bal}/'
+
+
+def get_train_folders(create_statistics=None, balance_data=None, oversample=None):
+    base_dir = get_output_directory(create_statistics, balance_data, oversample)
+    model_dir = f'{base_dir}models/'
+    checkpoint_dir = f'{model_dir}best_models/'
+    final_model_dir = f'{model_dir}fully_trained_models/'
+    logs_dir = f'{base_dir}logs'
+    return checkpoint_dir, final_model_dir, logs_dir
+
+
+def get_figure_dir(create_statistics=None, balance_data=None, oversample=None):
+    base_dir = get_output_directory(create_statistics, balance_data, oversample)
+    return base_dir + 'figures'
+
+
+def get_pickle_folder(mimic_version, n_time_steps,
+                      created_statistics=AppConfig.create_statistics, balanced=AppConfig.balance_data,
+                      seed=AppConfig.random_seed):
     """
     @return: path to data for the experiments
     """
-    path = f'./data/pickled_data_sets/mimic_{mimic_version}/{n_time_steps}_ts'
+
+    stat = 'with_stat' if created_statistics else 'no_stat'
+    balanced = 'b' if balanced else 'ub'
+    path = f'./data/pickled_data_sets/mimic_{mimic_version}/{n_time_steps}_ts_{stat}_{balanced}'
     if seed is not None:
         path += f'_{seed}'
     return path

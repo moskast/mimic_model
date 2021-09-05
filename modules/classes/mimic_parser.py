@@ -16,7 +16,7 @@ def map_dict(elem, dictionary):
         return np.nan
 
 
-def create_time_feature(series, window_size=24):
+def create_time_feature(series, window_size):
     """
     Transform time string of format "DD:MM:YY HH:MM:SS" into "DD:MM:YY {Number}"
     @param series: The time strings as series
@@ -36,7 +36,7 @@ class MimicParser(object):
     This class processes a MIMIC database into a single file
     """
 
-    def __init__(self, mimic_folder_path, folder, file_name, id_column, label_column, mimic_version=4, window_size=24):
+    def __init__(self, mimic_folder_path, folder, file_name, id_column, label_column, mimic_version=4):
 
         if mimic_version == 4:
             id_column = id_column.lower()
@@ -51,7 +51,6 @@ class MimicParser(object):
         self.mimic_folder_path = mimic_folder_path
         self.output_folder = f'{mimic_folder_path}/{folder}'
         self.base_file_name = file_name
-        self.window_size = window_size
         self.standard_path = f'{self.output_folder}/{self.base_file_name}'
         self.pid = ItemIDParser(mimic_folder_path, id_column, label_column)
 
@@ -96,7 +95,7 @@ class MimicParser(object):
 
         print(f"\r Finished reducing chart events")
 
-    def create_day_blocks(self, create_statistics=False):
+    def create_day_blocks(self, window_size, create_statistics=False):
         """
         Create the time feature as well as std, min and max
         """
@@ -106,7 +105,7 @@ class MimicParser(object):
         print("Loaded df")
 
         # create time feature
-        df['chartday'] = create_time_feature(df['charttime'], self.window_size)
+        df['chartday'] = create_time_feature(df['charttime'], window_size)
 
         print("New feature chartday")
         df['hadmid_day'] = df['hadm_id'].astype('str') + '_' + df['chartday']
@@ -230,7 +229,7 @@ class MimicParser(object):
         prescriptions.to_csv(self.output_folder + '/PRESCRIPTIONS_reduced.csv', index=False)
         print("Cleaned Prescriptions")
 
-    def add_prescriptions(self):
+    def add_prescriptions(self, window_size):
         """
         Add drug prescriptions
         """
@@ -255,8 +254,8 @@ class MimicParser(object):
                 count = 1
                 for row in csvreader:
                     dates = pd.date_range(row[startdate_index], row[enddate_index],
-                                          freq=f'{self.window_size}h').strftime('%Y-%m-%d %H:%M:%S')
-                    dates = create_time_feature(pd.Series(dates), self.window_size)
+                                          freq=f'{window_size}h').strftime('%Y-%m-%d %H:%M:%S')
+                    dates = create_time_feature(pd.Series(dates), window_size)
                     for date in dates:
                         csvwriter.writerow(row[0:max_index] + [date] + [row[-1]])
                     print(f"\r{count}", end="")
@@ -335,16 +334,16 @@ class MimicParser(object):
         df_shard.to_csv(self.an_path + '.csv', index=False)
         print("Added Notes")
 
-    def perform_full_parsing(self):
+    def perform_full_parsing(self, window_size, create_statistics):
         """
         Call all methods of self to perform the full pipeline on a mimic db
         """
         self.reduce_total()
-        hadm_dict = self.create_day_blocks()
+        hadm_dict = self.create_day_blocks(window_size=window_size, create_statistics=create_statistics)
         self.add_admissions_columns()
         self.add_patient_columns(hadm_dict)
         self.clean_prescriptions()
-        self.add_prescriptions()
+        self.add_prescriptions(window_size=window_size)
         self.add_icd_infect()
         if self.mimic_version == 3:
             self.add_notes()

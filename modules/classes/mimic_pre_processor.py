@@ -57,7 +57,6 @@ class MimicPreProcessor(object):
         return df
 
     def reduce_features(self, train_data, test_data):
-
         # +1 to also exclude the id col
         means = train_data.mean(axis=0)
         stds = train_data.std(axis=0)
@@ -77,19 +76,19 @@ class MimicPreProcessor(object):
         return pd.DataFrame(train_data_transformed, index=train_data.index),\
                pd.DataFrame(test_data_transformed, index=test_data.index)
 
-    def balance_data_set(self, train_data, n_targets, use_undersampling=True, imbalance=1.5):
+    def balance_data_set(self, train_data, n_targets, undersample=True, imbalance=1.5):
         # Get the number of patients with at least one positive day for each target then take the sum
         patients_grouped = train_data.groupby(self.id_col)
         n_pos_per_patient = patients_grouped.agg('sum').iloc[:, -n_targets:]
         n_pos_per_patient = n_pos_per_patient - patients_grouped.first().iloc[:, -n_targets:]
 
-        if use_undersampling:
-            i_target = (n_pos_per_patient != 0).sum(axis=0).argmax()
+        if undersample:
+            n_rows = (n_pos_per_patient != 0).sum(axis=0).argmax()
         else:
-            i_target = (n_pos_per_patient != 0).sum(axis=0).argmin()
+            n_rows = (n_pos_per_patient != 0).sum(axis=0).argmin()
 
-        pos_ids = np.array(n_pos_per_patient[n_pos_per_patient.iloc[:, i_target] != 0].index)
-        neg_rows = n_pos_per_patient[n_pos_per_patient.iloc[:, i_target] == 0].sum(axis=1)
+        pos_ids = np.array(n_pos_per_patient[n_pos_per_patient.iloc[:, n_rows] != 0].index)
+        neg_rows = n_pos_per_patient[n_pos_per_patient.iloc[:, n_rows] == 0].sum(axis=1)
         neg_pos_ids = np.array(neg_rows[neg_rows != 0].index)  # Neg in i_target but pos in other targets
         neg_ids = np.array(neg_rows[neg_rows == 0].index)
 
@@ -108,12 +107,12 @@ class MimicPreProcessor(object):
             majority_class = pos_ids
         minority_length = minority_class.shape[0]
 
-        if use_undersampling:
+        if undersample:
             total_ids = np.hstack([minority_class[:minority_length], majority_class[:int(minority_length * imbalance)]])
             np.random.shuffle(total_ids)
-            print(f'{i_target=} {len(pos_ids)=} - {len(neg_ids)=} - {len(total_ids)=}')
-            print('Balanced training data by undersampling')
             train_data = train_data[train_data[self.id_col].isin(total_ids)]
+            print(f'{n_rows=} {len(pos_ids)=} - {len(neg_ids)=} - {len(total_ids)=}')
+            print('Balanced training data by undersampling')
         else:
             difference = majority_class.shape[0] // minority_length
             minority_data = train_data[train_data[self.id_col].isin(minority_class)]
@@ -215,7 +214,7 @@ class MimicPreProcessor(object):
         dump_pickle(input_data_mask, get_pickle_file_path(f'{name}_data_mask', labels, output_folder))
         dump_pickle(targets_mask, get_pickle_file_path(f'{name}_targets_mask', labels, output_folder))
 
-    def pre_process_and_save_files(self, targets, n_time_steps, output_folder, balance_set=True, reduce_features=False):
+    def apply_pipeline(self, targets, n_time_steps, output_folder, balance_set=True, reduce_features=False):
         """
         Run a pipeline that:
             creates the target column target

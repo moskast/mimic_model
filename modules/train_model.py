@@ -10,10 +10,11 @@ from torch.optim import RMSprop
 from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader, Subset
 from torch.utils.tensorboard import SummaryWriter
-import torch.nn.functional as F
 
 import xgboost as xgb
 
+from modules.config import AppConfig
+from modules.load_data import get_train_folders
 from modules.models.multitask_loss_wrapper import MultiTaskLossWrapper
 
 
@@ -117,7 +118,7 @@ def get_weights_for_data(labels):
 
 
 def train_model(model_name, og_model, dataset, target_names, oversample=False,
-                epochs=10, batch_size=128, lr=1e-3, k_folds=5, seed=0):
+                epochs=5, batch_size=128, lr=1e-3, k_folds=5, seed=0):
     """
     Training the model using parameter inputs
     @param oversample:
@@ -132,10 +133,7 @@ def train_model(model_name, og_model, dataset, target_names, oversample=False,
     @param seed: random seed
     """
     torch.manual_seed(seed)
-    base_dir = './output/models'
-    checkpoint_dir = f'{base_dir}/best_models'
-    final_model_dir = f'{base_dir}/fully_trained_models'
-    logs_dir = f'./output/logs'
+    checkpoint_dir, final_model_dir, logs_dir = get_train_folders()
     writer_path_train = 'Loss/train/'
     writer_path_val = 'Loss/val/'
     for directory in [checkpoint_dir, final_model_dir, logs_dir]:
@@ -184,8 +182,8 @@ def train_model(model_name, og_model, dataset, target_names, oversample=False,
             val_loss = val_losses.sum()
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                torch.save(model, f'{checkpoint_dir}/{model_name}_{fold}.h5')
-            torch.save(model, f'./{final_model_dir}/{model_name}_{fold}.h5')
+                torch.save(model, f'{checkpoint_dir}{model_name}_{fold}.h5')
+            torch.save(model, f'./{final_model_dir}{model_name}_{fold}.h5')
             print(f'\rEpoch {epoch:02d} out of {epochs} with loss {val_loss}', end=" ")
 
             write_metric_list(writer, writer_path_train, train_losses, epoch, target_names)
@@ -203,7 +201,7 @@ def train_model(model_name, og_model, dataset, target_names, oversample=False,
 
 
 def train_xgb(model_name, dataset, oversample=False,
-              esr=50, nbr=100, lr=0.15, npt=100, k_folds=5, seed=0):
+              esr=50, nbr=50, lr=0.15, npt=100, k_folds=5, seed=0):
     params = {
         'learning_rate': lr,
         'gamma': 0,
@@ -218,9 +216,7 @@ def train_xgb(model_name, dataset, oversample=False,
         'seed': seed
     }
 
-    base_dir = './output/models'
-    checkpoint_dir = f'{base_dir}/best_models'
-    final_model_dir = f'{base_dir}/fully_trained_models'
+    checkpoint_dir, final_model_dir, logs_dir = get_train_folders()
     for directory in [checkpoint_dir, final_model_dir]:
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -234,9 +230,9 @@ def train_xgb(model_name, dataset, oversample=False,
         val_data, val_labels = dataset[val_ids]
 
         if oversample:
-            sample_weights = get_weights_for_data(train_labels)
+            sample_weights = get_weights_for_data(train_labels).numpy()
         else:
-            sample_weights = np.ones(train_labels.shape[0])
+            sample_weights = None
 
         d_train = xgb.DMatrix(train_data.numpy(), train_labels.numpy(), weight=sample_weights)
         d_val = xgb.DMatrix(val_data.numpy(), val_labels.numpy())
