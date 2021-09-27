@@ -19,9 +19,16 @@ def map_dict(elem, dictionary):
 def create_time_feature(series, window_size):
     """
     Transform time string of format "DD:MM:YY HH:MM:SS" into "DD:MM:YY {Number}"
-    @param series: The time strings as series
-    @param window_size: Number of hours for one time step
-    @return: Transformed time strings
+    Parameters
+    ----------
+    series: object
+        The time strings as series
+    window_size: int
+        Number of hours for one time step
+
+    Returns
+    -------
+    Transformed time strings
     """
     # Timestring is of format
     time_strings = series.astype('str').str.split(' ')
@@ -68,7 +75,7 @@ class MimicParser(object):
 
     def reduce_total(self):
         """
-        This will filter out rows from CHARTEVENTS.csv that are not feature relevant
+        Filters out rows from CHARTEVENTS.csv that are not feature relevant
         """
         feature_relevant_columns = ['subject_id', 'hadm_id', 'itemid', 'charttime', 'value', 'valuenum']
         if self.mimic_version == 3:
@@ -97,9 +104,17 @@ class MimicParser(object):
 
     def create_day_blocks(self, window_size, create_statistics=False):
         """
-        Create the time feature as well as std, min and max
+        Create the time feature as well as optionally std, min and max
+        Parameters
+        ----------
+        window_size: int
+            Number of hours for one time step
+        create_statistics: bool
+            Whether or not to create std, min and max columns
+        Returns
+        -------
+        Dict of subject ID and day
         """
-
         reversed_feature_dict = self.pid.get_reversed_feature_dictionary()
         df = pd.read_csv(self.rt_path + '.csv')
         print("Loaded df")
@@ -166,9 +181,8 @@ class MimicParser(object):
 
     def add_admissions_columns(self):
         """
-        Adds admission time
+        Add admission time
         """
-
         df = pd.read_csv(f'{self.mimic_folder_path}/ADMISSIONS.csv')
         df.columns = df.columns.str.lower()
         admittime_dict = dict(zip(df['hadm_id'], df['admittime']))
@@ -184,7 +198,10 @@ class MimicParser(object):
     def add_patient_columns(self, hadm_dict):
         """
         Add gender columns
-        @param hadm_dict:
+        Parameters
+        ----------
+        hadm_dict: dict
+            Dict of subject ID and day
         """
         df = pd.read_csv(self.mimic_folder_path + '/PATIENTS.csv')
         df.columns = df.columns.str.lower()
@@ -232,6 +249,10 @@ class MimicParser(object):
     def add_prescriptions(self, window_size):
         """
         Add drug prescriptions
+        Parameters
+        ----------
+        window_size: int
+            Number of hours for one time step
         """
         file_name = 'PRESCRIPTIONS_reduced'
         if self.mimic_version == 3:

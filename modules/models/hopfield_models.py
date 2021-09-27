@@ -3,7 +3,7 @@ from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 from modules.hopfieldlayers import Hopfield, HopfieldPooling, HopfieldLayer
-from modules.pad_sequences import get_seq_length_from_padded_seq
+from modules.utils.pad_sequences import get_seq_length_from_padded_seq
 
 
 class HopfieldLayerModel(nn.Module):

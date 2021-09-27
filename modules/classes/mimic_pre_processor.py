@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
 
-from modules.pad_sequences import pad_sequences, filter_sequences
-from modules.load_data import dump_pickle, get_pickle_file_path
+from modules.utils.pad_sequences import pad_sequences, filter_sequences
+from modules.utils.handle_directories import dump_pickle, get_pickle_file_path
 
 
 def wbc_criterion(x):
@@ -14,6 +14,46 @@ def wbc_criterion(x):
 
 def temp_criterion(x):
     return (x > 100.4 or x < 96.8) and x != 0
+
+def save_data_to_disk(self, whole_data, mask, name, labels, output_folder, n_targets=1):
+    """
+    Persist data to disk with pickle
+    Parameters
+    ----------
+    whole_data: object
+        dataset to be persisted
+    mask: object
+        boolean mask of which entry is padded
+    name: str
+        filenames
+    labels: list[str]
+        target column(s)
+    output_folder:
+        target folder for saved files
+    n_targets: int
+        number of targets
+    """
+    # Because the targets are for the same day shift the targets by one and ignore the last day
+    # because no targets exist
+    input_data = whole_data[:, :-1, :-n_targets]
+    targets = whole_data[:, 1:, -n_targets:]
+    targets = targets.reshape(targets.shape[0], targets.shape[1], n_targets)
+    input_data_mask = mask[:, :-1, :-n_targets]
+    targets_mask = mask[:, 1:, -n_targets:]
+    targets_mask = targets_mask.reshape(targets_mask.shape[0], targets_mask.shape[1], n_targets)
+
+    assert input_data.shape == input_data_mask.shape
+    assert targets.shape == targets_mask.shape
+
+    n_pos = np.count_nonzero(targets.sum(axis=1), axis=0)
+    print(name)
+    print(f'Number of positive patients {n_pos}')
+    print(f'Number of neg patients {whole_data.shape[0] - n_pos}')
+
+    dump_pickle(input_data, get_pickle_file_path(f'{name}_data', labels, output_folder))
+    dump_pickle(targets, get_pickle_file_path(f'{name}_targets', labels, output_folder))
+    dump_pickle(input_data_mask, get_pickle_file_path(f'{name}_data_mask', labels, output_folder))
+    dump_pickle(targets_mask, get_pickle_file_path(f'{name}_targets_mask', labels, output_folder))
 
 
 class MimicPreProcessor(object):
@@ -29,8 +69,13 @@ class MimicPreProcessor(object):
     def create_target(self, targets):
         """
         Given a dataframe creates a specified target for it as well as deleting columns that make the task trivial
-        @param targets: An array of targets
-        @return: dataframe with target column(s) as well as a list of feature names
+        Parameters
+        ----------
+        targets: list
+            An array of targets
+        Returns
+        -------
+        dataframe with target column(s) as well as a list of feature names
         """
         df = self.parsed_mimic.copy()
         # Delete features that make the task trivial
@@ -57,6 +102,19 @@ class MimicPreProcessor(object):
         return df
 
     def reduce_features(self, train_data, test_data):
+        """
+        Standardizes train and test data as well as applying PCA
+        Parameters
+        ----------
+        train_data:
+            The training data
+        test_data:
+            The test data
+
+        Returns
+        -------
+        Transformed data
+        """
         # +1 to also exclude the id col
         means = train_data.mean(axis=0)
         stds = train_data.std(axis=0)
@@ -73,10 +131,27 @@ class MimicPreProcessor(object):
         print(f'Can explain {np.sum(pca.explained_variance_ratio_)} variance')
         print(f'Reduced number of features from {train_data.shape[1]} to {train_data_transformed.shape[1]}')
 
-        return pd.DataFrame(train_data_transformed, index=train_data.index),\
+        return pd.DataFrame(train_data_transformed, index=train_data.index), \
                pd.DataFrame(test_data_transformed, index=test_data.index)
 
     def balance_data_set(self, train_data, n_targets, undersample=True, imbalance=1.5):
+        """
+        Balances data set by under or oversampling
+        Parameters
+        ----------
+        train_data: object
+            training data
+        n_targets: int
+            number of targets
+        undersample: bool
+            whether to under or oversample
+        imbalance: float
+            amount of imbalance to keep
+
+        Returns
+        -------
+        Balanced data
+        """
         # Get the number of patients with at least one positive day for each target then take the sum
         patients_grouped = train_data.groupby(self.id_col)
         n_pos_per_patient = patients_grouped.agg('sum').iloc[:, -n_targets:]
@@ -125,12 +200,22 @@ class MimicPreProcessor(object):
     def split_and_normalize_data(self, df, train_percentage, reduce_features=True, balance_set=True, n_targets=1):
         """
         Splits data into train and test set. Then applies normalization as well as undersampling (if specified)
-        @param df: data to be split
-        @param train_percentage: percentage of training samples
-        @param reduce_features:
-        @param balance_set: whether to apply undersampling
-        @param n_targets: number of targets
-        @return: train, validation and test set
+        Parameters
+        ----------
+        df: object
+            data to be split into train and test set
+        train_percentage: float
+            percentage of training samples
+        reduce_features: bool
+            whether or not to reduce the number of features
+        balance_set: bool
+            whether to balance the data
+        n_targets: int
+            number of targets
+
+        Returns
+        -------
+        train and test set
         """
         print(f'{self.random_seed=} {train_percentage=}')
         np.random.seed(self.random_seed)
@@ -163,10 +248,17 @@ class MimicPreProcessor(object):
     def pad_data(self, df, time_steps, pad_value=0):
         """
         Pad dataframe and create boolean mask
-        @param df: dataframe to be padded
-        @param time_steps: number of time steps to pad up to
-        @param pad_value: value with which the entry will get padded
-        @return: padded data and boolean mask
+        Parameters
+        ----------
+        df: object
+            dataframe to be padded
+        time_steps: int
+            number of time steps to pad up to
+        pad_value: float
+            value with which the entry will get padded
+        Returns
+        -------
+        padded data and boolean mask
         """
         df = pad_sequences(df, time_steps, pad_value=pad_value, grouping_col=self.id_col)
         df = df.drop(columns=[self.id_col])
@@ -182,38 +274,6 @@ class MimicPreProcessor(object):
         print("Padded data frame")
         return whole_data, mask
 
-    def save_data_to_disk(self, whole_data, mask, name, labels, output_folder, n_targets=1):
-        """
-        Persist data to disk with pickle
-        @param whole_data: dataset to be persisted
-        @param mask: boolean mask of which entry is padded
-        @param name: name of the files
-        @param labels: target column(s)
-        @param output_folder: target folder for saved files
-        @param n_targets:
-        """
-        # Because the targets are for the same day shift the targets by one and ignore the last day
-        # because no targets exist
-        input_data = whole_data[:, :-1, :-n_targets]
-        targets = whole_data[:, 1:, -n_targets:]
-        targets = targets.reshape(targets.shape[0], targets.shape[1], n_targets)
-        input_data_mask = mask[:, :-1, :-n_targets]
-        targets_mask = mask[:, 1:, -n_targets:]
-        targets_mask = targets_mask.reshape(targets_mask.shape[0], targets_mask.shape[1], n_targets)
-
-        assert input_data.shape == input_data_mask.shape
-        assert targets.shape == targets_mask.shape
-
-        n_pos = np.count_nonzero(targets.sum(axis=1), axis=0)
-        print(name)
-        print(f'Number of positive patients {n_pos}')
-        print(f'Number of neg patients {whole_data.shape[0] - n_pos}')
-
-        dump_pickle(input_data, get_pickle_file_path(f'{name}_data', labels, output_folder))
-        dump_pickle(targets, get_pickle_file_path(f'{name}_targets', labels, output_folder))
-        dump_pickle(input_data_mask, get_pickle_file_path(f'{name}_data_mask', labels, output_folder))
-        dump_pickle(targets_mask, get_pickle_file_path(f'{name}_targets_mask', labels, output_folder))
-
     def apply_pipeline(self, targets, n_time_steps, output_folder, balance_set=True, reduce_features=False):
         """
         Run a pipeline that:
@@ -221,11 +281,18 @@ class MimicPreProcessor(object):
             splits the data into train, validation and test set
             Padds the entry to n_time_steps
             Persists the data onto the disk to output_folder
-        @param targets: target column
-        @param n_time_steps: number of time steps
-        @param output_folder: target folder for saved files
-        @param balance_set:
-        @param reduce_features:
+        Parameters
+        ----------
+        targets: list
+            target column(s)
+        n_time_steps: int
+            number of time steps
+        output_folder: str
+            target folder for saved files
+        reduce_features: bool
+            whether or not to reduce the number of features
+        balance_set: bool
+            whether to balance the data
         """
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
@@ -240,6 +307,6 @@ class MimicPreProcessor(object):
 
         for dataset, name in [(train, 'train'), (test, 'test')]:
             whole_data, mask = self.pad_data(dataset, time_steps=n_time_steps)
-            self.save_data_to_disk(whole_data, mask, name, targets, output_folder, n_targets=len(targets))
+            save_data_to_disk(whole_data, mask, name, targets, output_folder, n_targets=len(targets))
 
         print(f'Saved files to folder: {output_folder}')

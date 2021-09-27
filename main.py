@@ -3,22 +3,28 @@ import time
 from modules.config import AppConfig
 from modules.classes.mimic_parser import MimicParser
 from modules.classes.mimic_pre_processor import MimicPreProcessor
-from modules.load_data import load_data_sets, get_pickle_folder
+from modules.utils.handle_directories import get_pickle_folder
 from modules.models.attention_models import AttentionLSTM
 from modules.models.comparison_models import ComparisonLSTM, ComparisonFNN, ComparisonLogisticRegression
 from modules.models.hopfield_models import HopfieldLayerModel, HopfieldPoolingModel, HopfieldLookupModel, HopfieldLSTM
 from modules.train_model import train_model, train_xgb
+from modules.utils.handle_pytorch import load_data_sets
 
 
 def train_models(mimic_version, data_path, n_time_steps, random_seed, targets):
     """
     Training loop for training models with targets and percentages
-    @param mimic_version: which mimic version to use 3 or 4
-    @param data_path: path to data for the experiments
-    @param n_time_steps: number of time step for one sample
-    @param random_seed: seed for setting random functions
-    @param targets:
-    @param train_comparison: whether to train for NN-LSTM comparison or benchmark experiment
+    Parameters
+    ----------
+    mimic_version: int
+        which mimic version to use 3 or 4
+    data_path: str
+        path to data for the experiments
+    n_time_steps: int
+        number of time step for one sample
+    random_seed: list[int]
+        seed for setting random functions
+    targets
     """
     start_time = time.time()
     print(f'{data_path=}')
@@ -65,14 +71,15 @@ def train_models(mimic_version, data_path, n_time_steps, random_seed, targets):
 def main(parse_mimic, pre_process_data, create_models):
     """
     Main loop that process mimic db, preprocess data and trains models
-    @param random_seed: random seed
-    @param parse_mimic: whether to parse the mimic database
-    @param pre_process_data: whether to preprocess the parsed the mimic database
-    @param create_models: whether to train the models
-    @param mimic_version: which mimic version to use 3 or 4
-    @param window_size: number of hours for one time step
+    Parameters
+    ----------
+    parse_mimic: bool
+        whether to parse the mimic database
+    pre_process_data: bool
+        whether to preprocess the parsed the mimic database
+    create_models: bool
+        whether to train the models
     """
-
     mimic_version = AppConfig.mimic_version
     window_size = AppConfig.window_size
     random_seed = AppConfig.random_seed

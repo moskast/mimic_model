@@ -120,8 +120,13 @@ class ItemIDParser(object):
     def get_prescriptions(self, mimic_version):
         """
         Get prescriptions from .csv
-        @param mimic_version: which mimic version to use
-        @return: prescriptions extracted from the .csv
+        Parameters
+        ----------
+        mimic_version: int
+            which mimic version to use
+        Returns
+        -------
+        prescriptions extracted from the .csv
         """
         if mimic_version == 3:
             columns = ['ROW_ID', 'SUBJECT_ID', 'HADM_ID', 'DRUG', 'STARTDATE', 'ENDDATE']
@@ -136,7 +141,9 @@ class ItemIDParser(object):
     def get_feature_dictionary(self):
         """
         Assemble feature dictionary from feature names
-        @return: a dictionary containing the rows in which items for each feature are held
+        Returns
+        -------
+        a dictionary containing the rows in which items for each feature are held
         """
         assert len(self.feature_names) == len(self.patterns)
         feature_dictionary = dict()
@@ -149,7 +156,9 @@ class ItemIDParser(object):
     def get_reversed_feature_dictionary(self):
         """
         Swaps keys and values of a dictionary
-        @return: reversed feature dictionary
+        Returns
+        -------
+        reversed feature dictionary
         """
         rev = {}
         for key, value in self.get_feature_dictionary().items():

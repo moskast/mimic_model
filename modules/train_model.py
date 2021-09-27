@@ -3,75 +3,70 @@ import math
 import os
 from time import time
 
-import numpy as np
 import torch
+import xgboost as xgb
 from sklearn.model_selection import KFold
 from torch.optim import RMSprop
 from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader, Subset
-from torch.utils.tensorboard import SummaryWriter
 
-import xgboost as xgb
-
-from modules.config import AppConfig
-from modules.load_data import get_train_folders
+from modules.classes.tensorboard_writer import TensorboardWriter
+from modules.utils.handle_pytorch import count_parameters, get_weights_for_data
+from modules.utils.handle_directories import get_train_folders
 from modules.models.multitask_loss_wrapper import MultiTaskLossWrapper
 
 
-def multi_task_losses(predicted_targets, targets, loss_function):
-    losses = []
-    # Vancomycin, MI, Sepsis
-    weights = [1, 4, 15]
-    for i in range(targets.shape[-1]):
-        if len(targets.shape) == 3:
-            predicted_target = predicted_targets[i][:, :, 0]
-            target = targets[:, :, i]
-        else:
-            predicted_target = predicted_targets[i][:, 0]
-            target = targets[:, i]
-        losses.append(loss_function(predicted_target, target) / weights[i])
-
-    return torch.stack(losses)
-
-
-def count_parameters(model):
-    """
-    Counts the number of parameters of target model
-    @param model: model for which the parameters should be counted
-    @return: number of parameters
-    """
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-
 def update(model, loss_function, data_loader, optimizer, device='cpu'):
+    """
+    Train model for one epoch.
+    Parameters
+    ----------
+    model: object
+        Model which gets trained
+    loss_function: object
+        Loss function for calculating gradients
+    data_loader: object
+        Contains training data
+    optimizer: object
+        Algorithm for weight updates
+    device: str
+        Determines where to do the computations
+    Returns
+    -------
+    A 1-D array of train losses
+    """
     model.train()
     train_loss = []
-    pos_ts = None
-    neg_ts = None
     for input_data, targets in data_loader:
-        t_sum = torch.sum(targets, dim=1) > 0
-        if pos_ts is None:
-            pos_ts = t_sum.sum(axis=0)
-            neg_ts = targets.shape[0] - t_sum.sum(axis=0)
-        else:
-            pos_ts += t_sum.sum(axis=0)
-            neg_ts += targets.shape[0] - t_sum.sum(axis=0)
         input_data = input_data.to(device)
         targets = targets.to(device)
         optimizer.zero_grad()
         predicted_targets = model(input_data)
-        """losses = multi_task_losses(predicted_targets, targets, loss_function)
-        losses.sum(axis=0).backward()"""
         combined_loss, losses = loss_function(predicted_targets, targets)
         combined_loss.backward()
         optimizer.step()
         train_loss.append(losses)
-    #print(f'\nLabel difference of: {neg_ts / pos_ts} - {pos_ts=} {neg_ts=}')
     train_losses = torch.stack(train_loss).mean(axis=0).detach()
     return train_losses
 
 
 def evaluate(model, metric, data_loader, device='cpu'):
+    """
+    Evaluate model on all data.
+    Parameters
+    ----------
+    model: object
+        Model which gets evaluated
+    metric: object
+        Function which determines the difference between predictions and labels
+    data_loader: object
+        Contains evaluation data
+    device: str
+        Determines where to do the computations
+    Returns
+    -------
+    A 1-D array of losses
+    """
     model.eval()
     values = []
     with torch.no_grad():
@@ -79,58 +74,41 @@ def evaluate(model, metric, data_loader, device='cpu'):
             input_data = input_data.to(device)
             targets = targets.to(device)
             predicted_targets = model(input_data)
-            # value = multi_task_losses(output, targets, metric)
             _, value = metric(predicted_targets, targets)
             values.append(value)
     metrics = torch.stack(values).mean(axis=0).detach()
     return metrics
 
 
-def write_metric_list(writer, path, metrics, epoch, targets):
-    if len(targets) >= 2:
-        writer.add_scalar(f'{path}/Compound', metrics.sum(), epoch)
-    for i in range(len(targets)):
-        writer.add_scalar(f'{path}{targets[i]}', metrics[i], epoch)
-
-
-def write_model_weights(writer, model, epoch):
-    for name, weight in model.named_parameters():
-        name, label = name.split('.', 1)
-        writer.add_histogram(f'{name}/{label}', weight, epoch)
-        if epoch != 0 and weight.grad is not None:
-            writer.add_histogram(f'{name}/{label}_grad', weight.grad, epoch)
-
-
-def get_weights_for_data(labels):
-    n_samples = 0
-    if len(labels.shape) == 3:
-        num_labels = labels.sum(dim=1)
-    else:
-        num_labels = labels
-    sample_weights = torch.zeros(num_labels.shape[0])
-    for index in range(num_labels.shape[-1]):
-        target = num_labels[:, index] > 0
-        class_sample_count = torch.unique(target, return_counts=True)[1]
-        n_samples = max(n_samples, max(class_sample_count))
-        weight = 1. / class_sample_count.numpy()
-        sample_weights += torch.tensor([weight[int(t)] for t in target])
-    return sample_weights
-
-
 def train_model(model_name, og_model, dataset, target_names, oversample=False,
                 epochs=5, batch_size=128, lr=1e-3, k_folds=5, seed=0):
     """
-    Training the model using parameter inputs
-    @param oversample:
-    @param model_name: Parameter used for naming the checkpoint_dir
-    @param og_model: model to be trained
-    @param dataset: training dataset
-    @param target_names:
-    @param epochs: number of epochs to train
-    @param batch_size: batch size
-    @param lr: learning rate
-    @param k_folds:
-    @param seed: random seed
+    Main training function for Pytorch models.
+    Trains the given model for the given amount of epochs.
+    After each Epoch the model, its weights
+    as well as the train and validation performance are saved.
+    Parameters
+    ----------
+    model_name: str
+        Name of the model, used for the filename of the saved model
+    og_model: object
+        Model to be trained
+    dataset: object
+        training dataset
+    target_names: list[str]
+        Targets for which the model is trained
+    oversample: bool
+        Whether or not to oversample
+    epochs: int
+        Number of times the model sees every data point
+    batch_size: int
+        Number of data points per batch
+    lr: float
+        Learning Rate, defines the size of the updates
+    k_folds: int
+        Number of folds to create for Cross Validation
+    seed: int
+        random seed for reproducibility
     """
     torch.manual_seed(seed)
     checkpoint_dir, final_model_dir, logs_dir = get_train_folders()
@@ -147,7 +125,7 @@ def train_model(model_name, og_model, dataset, target_names, oversample=False,
     start_time = time()
     print(f'Training model {model_name} with {count_parameters(og_model)} parameters using {device}')
     for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
-        writer = SummaryWriter(log_dir=f'{logs_dir}/{model_name}_{fold}_{time()}.log')
+        writer = TensorboardWriter(f'{logs_dir}/{model_name}_{fold}_{time()}.log', target_names)
 
         targets = dataset[train_ids][1]
         if oversample:
@@ -170,9 +148,9 @@ def train_model(model_name, og_model, dataset, target_names, oversample=False,
         train_losses = evaluate(model, loss_function, train_data_loader, device)
         val_losses = evaluate(model, loss_function, val_data_loader, device)
 
-        write_metric_list(writer, writer_path_train, train_losses, 0, target_names)
-        write_metric_list(writer, writer_path_val, val_losses, 0, target_names)
-        write_model_weights(writer, model, 0)
+        writer.save_metric_list(writer_path_train, train_losses, 0)
+        writer.save_metric_list(writer_path_val, val_losses, 0)
+        writer.save_model_weights(model, 0)
 
         print(f'\nTraining fold {fold + 1} out of {k_folds}')
         for epoch in range(1, epochs + 1):
@@ -186,9 +164,9 @@ def train_model(model_name, og_model, dataset, target_names, oversample=False,
             torch.save(model, f'./{final_model_dir}{model_name}_{fold}.h5')
             print(f'\rEpoch {epoch:02d} out of {epochs} with loss {val_loss}', end=" ")
 
-            write_metric_list(writer, writer_path_train, train_losses, epoch, target_names)
-            write_metric_list(writer, writer_path_val, val_losses, epoch, target_names)
-            write_model_weights(writer, model, epoch)
+            writer.save_metric_list(writer_path_train, train_losses, epoch)
+            writer.save_metric_list(writer_path_val, val_losses, epoch)
+            writer.save_model_weights(model, epoch)
 
             scheduler.step()
 
@@ -202,6 +180,30 @@ def train_model(model_name, og_model, dataset, target_names, oversample=False,
 
 def train_xgb(model_name, dataset, oversample=False,
               esr=50, nbr=50, lr=0.15, npt=100, k_folds=5, seed=0):
+    """
+    Main training function for Pytorch models.
+    Trains the given model for the given amount of epochs.
+    Parameters
+    ----------
+    model_name: str
+        Name of the model, used for the filename of the saved model
+    dataset: object
+        training dataset
+    oversample: bool
+        Whether or not to oversample
+    esr: int
+        XGBoost parameter
+    nbr: int
+        XGBoost parameter
+    lr: float
+        Learning Rate, defines the size of the updates
+    npt: int
+        XGBoost parameter
+    k_folds: int
+        Number of folds to create for Cross Validation
+    seed: int
+        random seed for reproducibility
+    """
     params = {
         'learning_rate': lr,
         'gamma': 0,
