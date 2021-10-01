@@ -15,7 +15,8 @@ def wbc_criterion(x):
 def temp_criterion(x):
     return (x > 100.4 or x < 96.8) and x != 0
 
-def save_data_to_disk(self, whole_data, mask, name, labels, output_folder, n_targets=1):
+
+def save_data_to_disk(whole_data, mask, name, labels, output_folder, n_targets=1):
     """
     Persist data to disk with pickle
     Parameters

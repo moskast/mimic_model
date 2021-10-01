@@ -81,7 +81,7 @@ def evaluate(model, metric, data_loader, device='cpu'):
 
 
 def train_model(model_name, og_model, dataset, target_names, oversample=False,
-                epochs=5, batch_size=128, lr=1e-3, k_folds=5, seed=0):
+                epochs=10, batch_size=256, lr=1e-3, k_folds=3, seed=0):
     """
     Main training function for Pytorch models.
     Trains the given model for the given amount of epochs.
@@ -111,20 +111,20 @@ def train_model(model_name, og_model, dataset, target_names, oversample=False,
         random seed for reproducibility
     """
     torch.manual_seed(seed)
-    checkpoint_dir, final_model_dir, logs_dir = get_train_folders()
+    best_model_dir, final_model_dir, logs_dir = get_train_folders()
     writer_path_train = 'Loss/train/'
     writer_path_val = 'Loss/val/'
-    for directory in [checkpoint_dir, final_model_dir, logs_dir]:
+    for directory in [best_model_dir, final_model_dir, logs_dir]:
         if not os.path.exists(directory):
             os.makedirs(directory)
 
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
-    kfold = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
+    k_fold = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
 
     start_time = time()
     print(f'Training model {model_name} with {count_parameters(og_model)} parameters using {device}')
-    for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
+    for fold, (train_ids, val_ids) in enumerate(k_fold.split(dataset)):
         writer = TensorboardWriter(f'{logs_dir}/{model_name}_{fold}_{time()}.log', target_names)
 
         targets = dataset[train_ids][1]
@@ -160,7 +160,7 @@ def train_model(model_name, og_model, dataset, target_names, oversample=False,
             val_loss = val_losses.sum()
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                torch.save(model, f'{checkpoint_dir}{model_name}_{fold}.h5')
+                torch.save(model, f'{best_model_dir}{model_name}_{fold}.h5')
             torch.save(model, f'./{final_model_dir}{model_name}_{fold}.h5')
             print(f'\rEpoch {epoch:02d} out of {epochs} with loss {val_loss}', end=" ")
 
@@ -170,8 +170,6 @@ def train_model(model_name, og_model, dataset, target_names, oversample=False,
 
             scheduler.step()
 
-        break
-
     print(f'\nTraining took {time() - start_time} seconds')
 
     if device != 'cpu':
@@ -179,7 +177,7 @@ def train_model(model_name, og_model, dataset, target_names, oversample=False,
 
 
 def train_xgb(model_name, dataset, oversample=False,
-              esr=50, nbr=50, lr=0.15, npt=100, k_folds=5, seed=0):
+              esr=50, nbr=50, lr=0.15, npt=100, k_folds=3, seed=0):
     """
     Main training function for Pytorch models.
     Trains the given model for the given amount of epochs.
@@ -224,9 +222,9 @@ def train_xgb(model_name, dataset, oversample=False,
             os.makedirs(directory)
 
     start_time = time()
-    kfold = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
+    k_fold = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
     print(f'Training model {model_name}')
-    for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
+    for fold, (train_ids, val_ids) in enumerate(k_fold.split(dataset)):
         print(f'\nTraining fold {fold + 1} out of {k_folds}')
         train_data, train_labels = dataset[train_ids]
         val_data, val_labels = dataset[val_ids]
@@ -238,13 +236,12 @@ def train_xgb(model_name, dataset, oversample=False,
 
         d_train = xgb.DMatrix(train_data.numpy(), train_labels.numpy(), weight=sample_weights)
         d_val = xgb.DMatrix(val_data.numpy(), val_labels.numpy())
-        evallist = [(d_train, 'train'), (d_val, 'eval')]
-        bst = xgb.train(params, d_train, evals=evallist, early_stopping_rounds=esr, verbose_eval=50,
+        eval_list = [(d_train, 'train'), (d_val, 'eval')]
+        bst = xgb.train(params, d_train, evals=eval_list, early_stopping_rounds=esr, verbose_eval=50,
                         num_boost_round=nbr)
         print(f'{bst.best_iteration} - {bst.best_score=}')
         bst.save_model(f'{final_model_dir}/{model_name}_{fold}.model')
         bst.save_model(f'{checkpoint_dir}/{model_name}_{fold}.model')
         print("Saved model")
-        break
 
     print(f'\nTraining took {time() - start_time} seconds')

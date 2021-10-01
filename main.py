@@ -38,9 +38,10 @@ def train_models(mimic_version, data_path, n_time_steps, random_seed, targets):
 
         if len(targets) == 1:  # If not Multitasking
             model_id = 'xgb' + common_model_id
-            train_xgb(model_id, train_dataset_reduced, seed=random_seed)
+            train_xgb(model_id, train_dataset_reduced, seed=random_seed, oversample=AppConfig.oversample)
             model_id = 'random_forest_xgb' + common_model_id
-            train_xgb(model_id, train_dataset_reduced, nbr=1, lr=1, npt=100, seed=random_seed, oversample=AppConfig.oversample)
+            train_xgb(model_id, train_dataset_reduced, nbr=1, lr=1, npt=100, seed=random_seed,
+                      oversample=AppConfig.oversample)
 
         models = [
             ('comparison_LR', ComparisonLogisticRegression(n_features_reduced, num_targets=n_targets)),
@@ -58,7 +59,8 @@ def train_models(mimic_version, data_path, n_time_steps, random_seed, targets):
         for model_name, model in models:
             model_id = model_name + common_model_id
             if model_name == 'comparison_FNN' or model_name == 'comparison_LR':
-                train_model(model_id, model, train_dataset_reduced, targets, seed=random_seed, oversample=AppConfig.oversample)
+                train_model(model_id, model, train_dataset_reduced, targets, seed=random_seed,
+                            oversample=AppConfig.oversample)
             else:
                 train_model(model_id, model, train_dataset, targets, seed=random_seed, oversample=AppConfig.oversample)
 
@@ -132,5 +134,8 @@ if __name__ == "__main__":
     pre_process = False
     train = True
 
-    print(f'{AppConfig.oversample=} - {AppConfig.create_statistics=} - {AppConfig.balance_data=}')
-    main(parse, pre_process, train)
+    for bd, os in [(True, False), (False, False), (False, True)]:
+        AppConfig.balance_data = bd
+        AppConfig.oversample = os
+        print(f'{AppConfig.oversample=} - {AppConfig.balance_data=}')
+        main(parse, pre_process, train)

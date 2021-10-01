@@ -79,13 +79,14 @@ def get_train_folders(create_statistics=None, undersample=None, oversample=None)
     """
     base_dir = get_output_directory(create_statistics, undersample, oversample)
     model_dir = f'{base_dir}models/'
-    checkpoint_dir = f'{model_dir}best_models/'
+    best_model_dir = f'{model_dir}best_models/'
     final_model_dir = f'{model_dir}fully_trained_models/'
     logs_dir = f'{base_dir}logs'
-    return checkpoint_dir, final_model_dir, logs_dir
+    return best_model_dir, final_model_dir, logs_dir
 
 
-def get_figure_dir(create_statistics=None, undersample=None, oversample=None):
+def get_figure_dir(create_statistics=AppConfig.create_statistics, undersample=AppConfig.balance_data,
+                   oversample=AppConfig.oversample):
     """
     Determines the figure directory.
     Parameters
@@ -135,7 +136,7 @@ def get_pickle_folder(mimic_version, n_time_steps,
     return path
 
 
-def get_pickle_file_path(file_name, target, folder='.output/pickled_data_sets'):
+def get_pickle_file_path(file_name, target, folder):
     """
     Returns a path to a saved file
 
