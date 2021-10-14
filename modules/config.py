@@ -1,6 +1,11 @@
+import torch
+
+
 class AppConfig:
     """
     Class containing all application wide variables.
+    device: str
+        on which device to perform calculations
     random_seed: int
         random seed on which to train on
     mimic_version: int
@@ -18,6 +23,7 @@ class AppConfig:
     oversample: bool
         whether to oversample the data
     """
+    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
     random_seed = 0
     mimic_version = 4
 
@@ -28,8 +34,10 @@ class AppConfig:
     # List of percentages of training data to be used for the experiments
     percentages = [1.0]
 
+    k_folds = 3
+
     train_single_targets = True
 
     create_statistics = False
-    balance_data = False
+    balance_data = True
     oversample = False

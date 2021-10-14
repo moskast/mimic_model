@@ -38,10 +38,11 @@ def train_models(mimic_version, data_path, n_time_steps, random_seed, targets):
 
         if len(targets) == 1:  # If not Multitasking
             model_id = 'xgb' + common_model_id
-            train_xgb(model_id, train_dataset_reduced, seed=random_seed, oversample=AppConfig.oversample)
+            train_xgb(model_id, train_dataset_reduced, seed=random_seed,
+                      oversample=AppConfig.oversample, k_folds=AppConfig.k_folds)
             model_id = 'random_forest_xgb' + common_model_id
             train_xgb(model_id, train_dataset_reduced, nbr=1, lr=1, npt=100, seed=random_seed,
-                      oversample=AppConfig.oversample)
+                      oversample=AppConfig.oversample, k_folds=AppConfig.k_folds)
 
         models = [
             ('comparison_LR', ComparisonLogisticRegression(n_features_reduced, num_targets=n_targets)),
@@ -60,9 +61,10 @@ def train_models(mimic_version, data_path, n_time_steps, random_seed, targets):
             model_id = model_name + common_model_id
             if model_name == 'comparison_FNN' or model_name == 'comparison_LR':
                 train_model(model_id, model, train_dataset_reduced, targets, seed=random_seed,
-                            oversample=AppConfig.oversample)
+                            oversample=AppConfig.oversample, k_folds=AppConfig.k_folds)
             else:
-                train_model(model_id, model, train_dataset, targets, seed=random_seed, oversample=AppConfig.oversample)
+                train_model(model_id, model, train_dataset, targets,
+                            seed=random_seed, oversample=AppConfig.oversample, k_folds=AppConfig.k_folds)
 
         print(f'\rFinished training on {p * 100}% of data')
     print(f'\rFinished training on {random_seed=}')
@@ -133,6 +135,10 @@ if __name__ == "__main__":
     parse = False
     pre_process = False
     train = True
+
+    '''for bd in [True, False]:
+        AppConfig.balance_data = bd
+        main(parse, pre_process, train)'''
 
     for bd, os in [(True, False), (False, False), (False, True)]:
         AppConfig.balance_data = bd

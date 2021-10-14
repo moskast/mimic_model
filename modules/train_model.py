@@ -11,6 +11,7 @@ from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader, Subset
 
 from modules.classes.tensorboard_writer import TensorboardWriter
+from modules.config import AppConfig
 from modules.utils.handle_pytorch import count_parameters, get_weights_for_data
 from modules.utils.handle_directories import get_train_folders
 from modules.models.multitask_loss_wrapper import MultiTaskLossWrapper
@@ -80,8 +81,8 @@ def evaluate(model, metric, data_loader, device='cpu'):
     return metrics
 
 
-def train_model(model_name, og_model, dataset, target_names, oversample=False,
-                epochs=10, batch_size=256, lr=1e-3, k_folds=3, seed=0):
+def train_model(model_name, og_model, dataset, target_names, k_folds, oversample=False,
+                epochs=5, batch_size=128, lr=1e-3, seed=0):
     """
     Main training function for Pytorch models.
     Trains the given model for the given amount of epochs.
@@ -97,6 +98,8 @@ def train_model(model_name, og_model, dataset, target_names, oversample=False,
         training dataset
     target_names: list[str]
         Targets for which the model is trained
+    k_folds: int
+        Number of folds to create for Cross Validation
     oversample: bool
         Whether or not to oversample
     epochs: int
@@ -105,8 +108,6 @@ def train_model(model_name, og_model, dataset, target_names, oversample=False,
         Number of data points per batch
     lr: float
         Learning Rate, defines the size of the updates
-    k_folds: int
-        Number of folds to create for Cross Validation
     seed: int
         random seed for reproducibility
     """
@@ -118,7 +119,7 @@ def train_model(model_name, og_model, dataset, target_names, oversample=False,
         if not os.path.exists(directory):
             os.makedirs(directory)
 
-    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    device = AppConfig.device
 
     k_fold = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
 
@@ -176,8 +177,8 @@ def train_model(model_name, og_model, dataset, target_names, oversample=False,
         torch.cuda.empty_cache()
 
 
-def train_xgb(model_name, dataset, oversample=False,
-              esr=50, nbr=50, lr=0.15, npt=100, k_folds=3, seed=0):
+def train_xgb(model_name, dataset, k_folds, oversample=False,
+              esr=50, nbr=50, lr=0.15, npt=100, seed=0):
     """
     Main training function for Pytorch models.
     Trains the given model for the given amount of epochs.
@@ -187,6 +188,8 @@ def train_xgb(model_name, dataset, oversample=False,
         Name of the model, used for the filename of the saved model
     dataset: object
         training dataset
+    k_folds: int
+        Number of folds to create for Cross Validation
     oversample: bool
         Whether or not to oversample
     esr: int
@@ -197,8 +200,6 @@ def train_xgb(model_name, dataset, oversample=False,
         Learning Rate, defines the size of the updates
     npt: int
         XGBoost parameter
-    k_folds: int
-        Number of folds to create for Cross Validation
     seed: int
         random seed for reproducibility
     """

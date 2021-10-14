@@ -2,10 +2,10 @@ import os
 
 import numpy as np
 import pandas as pd
-from sklearn.decomposition import PCA
 
+from modules.utils.handle_datasets import normalize_data, balance_data_set, split_data
 from modules.utils.pad_sequences import pad_sequences, filter_sequences
-from modules.utils.handle_directories import dump_pickle, get_pickle_file_path
+from modules.utils.handle_directories import dump_pickle, get_pickle_file_path, load_pickle
 
 
 def wbc_criterion(x):
@@ -102,140 +102,56 @@ class MimicPreProcessor(object):
 
         return df
 
-    def reduce_features(self, train_data, test_data):
+    def create_time_col(self, df, n_time_steps):
         """
-        Standardizes train and test data as well as applying PCA
+        Create a column that indicates the timestep each row is in
         Parameters
         ----------
-        train_data:
-            The training data
-        test_data:
-            The test data
-
-        Returns
-        -------
-        Transformed data
+        df: object
+            dataframe to which to add the column
+        n_time_steps: int
+            number of timesteps
         """
-        # +1 to also exclude the id col
-        means = train_data.mean(axis=0)
-        stds = train_data.std(axis=0)
-        stds[stds == 0] = 1
+        df.insert(0, 'group_index', df.groupby(self.id_col).cumcount() / (n_time_steps - 1))
+        print(f'Created time column')
+        return df
 
-        train_data = (train_data - means) / stds
-        test_data = (test_data - means) / stds
-
-        pca = PCA(n_components=0.99, random_state=self.random_seed)
-        pca.fit(train_data.values)
-        train_data_transformed = pca.transform(train_data.values)
-        test_data_transformed = pca.transform(test_data.values)
-
-        print(f'Can explain {np.sum(pca.explained_variance_ratio_)} variance')
-        print(f'Reduced number of features from {train_data.shape[1]} to {train_data_transformed.shape[1]}')
-
-        return pd.DataFrame(train_data_transformed, index=train_data.index), \
-               pd.DataFrame(test_data_transformed, index=test_data.index)
-
-    def balance_data_set(self, train_data, n_targets, undersample=True, imbalance=1.5):
+    def split_and_normalize_data(self, df, train_percentage, n_targets=1, key_path='./data/pickled_data_sets/'):
         """
-        Balances data set by under or oversampling
-        Parameters
-        ----------
-        train_data: object
-            training data
-        n_targets: int
-            number of targets
-        undersample: bool
-            whether to under or oversample
-        imbalance: float
-            amount of imbalance to keep
-
-        Returns
-        -------
-        Balanced data
-        """
-        # Get the number of patients with at least one positive day for each target then take the sum
-        patients_grouped = train_data.groupby(self.id_col)
-        n_pos_per_patient = patients_grouped.agg('sum').iloc[:, -n_targets:]
-        n_pos_per_patient = n_pos_per_patient - patients_grouped.first().iloc[:, -n_targets:]
-
-        if undersample:
-            n_rows = (n_pos_per_patient != 0).sum(axis=0).argmax()
-        else:
-            n_rows = (n_pos_per_patient != 0).sum(axis=0).argmin()
-
-        pos_ids = np.array(n_pos_per_patient[n_pos_per_patient.iloc[:, n_rows] != 0].index)
-        neg_rows = n_pos_per_patient[n_pos_per_patient.iloc[:, n_rows] == 0].sum(axis=1)
-        neg_pos_ids = np.array(neg_rows[neg_rows != 0].index)  # Neg in i_target but pos in other targets
-        neg_ids = np.array(neg_rows[neg_rows == 0].index)
-
-        np.random.shuffle(pos_ids)
-        np.random.shuffle(neg_pos_ids)
-        np.random.shuffle(neg_ids)
-
-        print(len(neg_pos_ids), len(neg_ids))
-        neg_ids = np.concatenate([neg_pos_ids, neg_ids])
-
-        if pos_ids.shape[0] < neg_ids.shape[0]:
-            minority_class = pos_ids
-            majority_class = neg_ids
-        else:
-            minority_class = neg_ids
-            majority_class = pos_ids
-        minority_length = minority_class.shape[0]
-
-        if undersample:
-            total_ids = np.hstack([minority_class[:minority_length], majority_class[:int(minority_length * imbalance)]])
-            np.random.shuffle(total_ids)
-            train_data = train_data[train_data[self.id_col].isin(total_ids)]
-            print(f'{n_rows=} {len(pos_ids)=} - {len(neg_ids)=} - {len(total_ids)=}')
-            print('Balanced training data by undersampling')
-        else:
-            difference = majority_class.shape[0] // minority_length
-            minority_data = train_data[train_data[self.id_col].isin(minority_class)]
-            for i in range(difference - 1):
-                train_data = train_data.append(minority_data)
-            print(f'Added minority class {difference - 1} times')
-            print('Balanced training data by oversampling')
-        return train_data
-
-    def split_and_normalize_data(self, df, train_percentage, reduce_features=True, balance_set=True, n_targets=1):
-        """
-        Splits data into train and test set. Then applies normalization as well as undersampling (if specified)
+        Splits data into train and test set. Then applies normalization
         Parameters
         ----------
         df: object
             data to be split into train and test set
         train_percentage: float
             percentage of training samples
-        reduce_features: bool
-            whether or not to reduce the number of features
-        balance_set: bool
-            whether to balance the data
         n_targets: int
             number of targets
+        key_path: str
+            path to key files
 
         Returns
         -------
         train and test set
         """
-        print(f'{self.random_seed=} {train_percentage=}')
-        np.random.seed(self.random_seed)
-        keys = df[self.id_col].sample(frac=1, random_state=self.random_seed).unique()
-        train_bound = int(train_percentage * len(keys))
-        train_keys = keys[:train_bound]
-        test_keys = keys[train_bound:]
+        print(f'{train_percentage=}')
+        # Try loading train test split. If it does not exist make it yourself
+        try:
+            train_keys = load_pickle(f'{key_path}train_keys.pickle')
+            test_keys = load_pickle(f'{key_path}test_keys.pickle')
+        except IOError:
+            train_keys, test_keys = split_data(df, self.id_col, df.columns[-1], train_percentage, random_state=0)
+            dump_pickle(train_keys, f'{key_path}train_keys.pickle')
+            dump_pickle(test_keys, f'{key_path}test_keys.pickle')
         train_data = df[df[self.id_col].isin(train_keys)]
         test_data = df[df[self.id_col].isin(test_keys)]
 
-        if reduce_features:
-            train_subset = train_data.iloc[:, :-(n_targets + 1)]
-            test_subset = test_data.iloc[:, :-(n_targets + 1)]
-            train_subset, test_subset = self.reduce_features(train_subset, test_subset)
-            train_data = pd.concat([train_subset, train_data.iloc[:, -(n_targets + 1):]], axis=1)
-            test_data = pd.concat([test_subset, test_data.iloc[:, -(n_targets + 1):]], axis=1)
-
-        if balance_set:
-            train_data = self.balance_data_set(train_data, n_targets)
+        # +1 to also exclude the id col
+        train_subset = train_data.iloc[:, :-(n_targets + 1)]
+        test_subset = test_data.iloc[:, :-(n_targets + 1)]
+        train_subset, test_subset = normalize_data(train_subset, test_subset)
+        train_data = pd.concat([train_subset, train_data.iloc[:, -(n_targets + 1):]], axis=1)
+        test_data = pd.concat([test_subset, test_data.iloc[:, -(n_targets + 1):]], axis=1)
 
         print(f'{train_data.shape=} - {test_data.shape=}')
 
@@ -275,9 +191,9 @@ class MimicPreProcessor(object):
         print("Padded data frame")
         return whole_data, mask
 
-    def apply_pipeline(self, targets, n_time_steps, output_folder, balance_set=True, reduce_features=False):
+    def apply_pipeline(self, targets, n_time_steps, output_folder, balance_set=True):
         """
-        Run a pipeline that:
+        A pipeline that:
             creates the target column target
             splits the data into train, validation and test set
             Padds the entry to n_time_steps
@@ -290,24 +206,26 @@ class MimicPreProcessor(object):
             number of time steps
         output_folder: str
             target folder for saved files
-        reduce_features: bool
-            whether or not to reduce the number of features
         balance_set: bool
             whether to balance the data
         """
+        n_targets = len(targets)
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
-        df = self.create_target(targets)
-        df = filter_sequences(df, 2, n_time_steps, grouping_col=self.id_col)
-        train, test = self.split_and_normalize_data(df, train_percentage=0.8, n_targets=len(targets),
-                                                    balance_set=balance_set, reduce_features=reduce_features)
 
-        feature_names = list(train.columns[:-len(targets)])
+        df = self.create_target(targets)
+        # df = self.create_time_col(df, n_time_steps)
+        df = filter_sequences(df, 2, n_time_steps, grouping_col=self.id_col)
+
+        train, test = self.split_and_normalize_data(df, train_percentage=0.8, n_targets=n_targets)
+        if balance_set:
+            train = balance_data_set(self.id_col, train, n_targets)
+        feature_names = list(train.columns[:-n_targets])
         feature_names.remove(self.id_col)
         dump_pickle(feature_names, get_pickle_file_path('features', targets, output_folder))
 
         for dataset, name in [(train, 'train'), (test, 'test')]:
             whole_data, mask = self.pad_data(dataset, time_steps=n_time_steps)
-            save_data_to_disk(whole_data, mask, name, targets, output_folder, n_targets=len(targets))
+            save_data_to_disk(whole_data, mask, name, targets, output_folder, n_targets=n_targets)
 
         print(f'Saved files to folder: {output_folder}')
