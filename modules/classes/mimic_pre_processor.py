@@ -116,7 +116,7 @@ class MimicPreProcessor(object):
         print(f'Created time column')
         return df
 
-    def split_and_normalize_data(self, df, train_percentage, n_targets=1, key_path='./data/pickled_data_sets/'):
+    def split_and_normalize_data(self, df, train_percentage, targets, key_path='./data/pickled_data_sets/'):
         """
         Splits data into train and test set. Then applies normalization
         Parameters
@@ -134,15 +134,18 @@ class MimicPreProcessor(object):
         -------
         train and test set
         """
+        n_targets = len(targets)
         print(f'{train_percentage=}')
         # Try loading train test split. If it does not exist make it yourself
+        train_key_path = f'{key_path}train_keys.pickle'
+        test_key_path = f'{key_path}test_keys.pickle'
         try:
-            train_keys = load_pickle(f'{key_path}train_keys.pickle')
-            test_keys = load_pickle(f'{key_path}test_keys.pickle')
+            train_keys = load_pickle(train_key_path)
+            test_keys = load_pickle(test_key_path)
         except IOError:
             train_keys, test_keys = split_data(df, self.id_col, df.columns[-1], train_percentage, random_state=0)
-            dump_pickle(train_keys, f'{key_path}train_keys.pickle')
-            dump_pickle(test_keys, f'{key_path}test_keys.pickle')
+            dump_pickle(train_keys, train_key_path)
+            dump_pickle(test_keys, test_key_path)
         train_data = df[df[self.id_col].isin(train_keys)]
         test_data = df[df[self.id_col].isin(test_keys)]
 
@@ -217,7 +220,7 @@ class MimicPreProcessor(object):
         # df = self.create_time_col(df, n_time_steps)
         df = filter_sequences(df, 2, n_time_steps, grouping_col=self.id_col)
 
-        train, test = self.split_and_normalize_data(df, train_percentage=0.8, n_targets=n_targets)
+        train, test = self.split_and_normalize_data(df, train_percentage=0.8, targets=targets)
         if balance_set:
             train = balance_data_set(self.id_col, train, n_targets)
         feature_names = list(train.columns[:-n_targets])
