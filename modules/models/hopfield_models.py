@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
+from modules.config import AppConfig
 from modules.hopfieldlayers import Hopfield, HopfieldPooling, HopfieldLayer
 from modules.utils.pad_sequences import get_seq_length_from_padded_seq
 
@@ -20,10 +21,12 @@ class HopfieldLayerModel(nn.Module):
         self.output_layers = nn.ModuleList(
             [nn.Linear(self.hopfield.output_size, output_size) for i in range(num_targets)])
 
-    def forward(self, features, apply_activation=False):
+    def forward(self, features, apply_activation=False, device=AppConfig.device):
         outputs = []
-
-        intermediate = self.hopfield(features)
+        association_mask = torch.triu(
+            torch.ones((features.shape[1], features.shape[1])), diagonal=1
+        ).to(device)
+        intermediate = self.hopfield(features, association_mask=association_mask)
 
         for output_layer in self.output_layers:
             output = output_layer(intermediate)
@@ -80,7 +83,6 @@ class HopfieldLookupModel(nn.Module):
 
     def forward(self, features, apply_activation=False):
         outputs = []
-
         intermediate = self.hopfield_lookup(features)
 
         for output_layer in self.output_layers:
@@ -137,13 +139,15 @@ class HopfieldLSTM(nn.Module):
             start, end = n // 4, n // 2
             t[start:end].fill_(1.)
 
-    def forward(self, features, h_c=None, apply_activation=False):
+    def forward(self, features, h_c=None, apply_activation=False, device=AppConfig.device):
         n_timesteps = features.shape[1]
         seq_lengths = get_seq_length_from_padded_seq(features.clone().detach().cpu().numpy())
         outputs = []
-
+        association_mask = torch.triu(
+            torch.ones((features.shape[1], features.shape[1])), diagonal=1
+        ).to(device)
         # x is of shape batch_size x seq_length x n_features
-        attention = self.attention_layer(features)
+        attention = self.attention_layer(features, association_mask=association_mask)
         if self.full_attention:
             attention = attention.reshape(features.shape[0], -1)
         attention = torch.softmax(attention, dim=1)

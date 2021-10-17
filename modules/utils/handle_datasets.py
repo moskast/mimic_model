@@ -42,7 +42,6 @@ def split_data(data, id_col, target_col, train_size, random_state=0):
     """
     print('Starting to prepare data')
     ids = data[id_col].unique()
-
     y = get_series_label(data, id_col, target_col)
     train_ids, test_ids = train_test_split(ids, train_size=train_size, random_state=random_state, stratify=y)
 

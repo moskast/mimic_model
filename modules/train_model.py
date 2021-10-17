@@ -82,7 +82,7 @@ def evaluate(model, metric, data_loader, device='cpu'):
 
 
 def train_model(model_name, og_model, dataset, target_names, k_folds, oversample=False,
-                epochs=5, batch_size=128, lr=1e-3, seed=0):
+                epochs=10, batch_size=128, lr=1e-3, seed=0):
     """
     Main training function for Pytorch models.
     Trains the given model for the given amount of epochs.

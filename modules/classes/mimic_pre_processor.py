@@ -95,11 +95,10 @@ class MimicPreProcessor(object):
             df['VANCOMYCIN'] = df['vancomycin'].apply(lambda x: 1 if x > 0 else 0)
             trivial_features += ['vancomycin']
 
-        df = df.drop(trivial_features, axis=1, errors='ignore')
-        df = df.select_dtypes(exclude=['object'])
-
         print(f'Created target {targets}')
 
+        df = df.drop(trivial_features, axis=1, errors='ignore')
+        df = df.select_dtypes(exclude=['object'])
         return df
 
     def create_time_col(self, df, n_time_steps):
@@ -125,8 +124,8 @@ class MimicPreProcessor(object):
             data to be split into train and test set
         train_percentage: float
             percentage of training samples
-        n_targets: int
-            number of targets
+        targets: list
+            list of targets
         key_path: str
             path to key files
 
@@ -137,17 +136,19 @@ class MimicPreProcessor(object):
         n_targets = len(targets)
         print(f'{train_percentage=}')
         # Try loading train test split. If it does not exist make it yourself
-        train_key_path = f'{key_path}train_keys.pickle'
-        test_key_path = f'{key_path}test_keys.pickle'
+        train_key_path = f'{key_path}train_ids_{targets}.pickle'
+        test_key_path = f'{key_path}test_ids_{targets}.pickle'
         try:
-            train_keys = load_pickle(train_key_path)
-            test_keys = load_pickle(test_key_path)
+            train_ids = load_pickle(train_key_path)
+            test_ids = load_pickle(test_key_path)
         except IOError:
-            train_keys, test_keys = split_data(df, self.id_col, df.columns[-1], train_percentage, random_state=0)
-            dump_pickle(train_keys, train_key_path)
-            dump_pickle(test_keys, test_key_path)
-        train_data = df[df[self.id_col].isin(train_keys)]
-        test_data = df[df[self.id_col].isin(test_keys)]
+            print(f'Using column {df.columns[-1]} for stratified split')
+            train_ids, test_ids = split_data(df, self.id_col, df.columns[-1], train_percentage,
+                                             random_state=self.random_seed)
+            dump_pickle(train_ids, train_key_path)
+            dump_pickle(test_ids, test_key_path)
+        train_data = df[df[self.id_col].isin(train_ids)]
+        test_data = df[df[self.id_col].isin(test_ids)]
 
         # +1 to also exclude the id col
         train_subset = train_data.iloc[:, :-(n_targets + 1)]
@@ -217,7 +218,7 @@ class MimicPreProcessor(object):
             os.makedirs(output_folder)
 
         df = self.create_target(targets)
-        # df = self.create_time_col(df, n_time_steps)
+        df = self.create_time_col(df, n_time_steps)
         df = filter_sequences(df, 2, n_time_steps, grouping_col=self.id_col)
 
         train, test = self.split_and_normalize_data(df, train_percentage=0.8, targets=targets)
