@@ -136,9 +136,11 @@ if __name__ == "__main__":
     pre_process = False
     train = True
 
-    '''for bd in [True, False]:
+    '''
+    for bd in [True, False]:
         AppConfig.balance_data = bd
-        main(parse, pre_process, train)'''
+        main(parse, pre_process, train)
+    '''
 
     for bd, os in [(True, False), (False, False), (False, True)]:
         AppConfig.balance_data = bd
