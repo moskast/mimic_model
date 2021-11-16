@@ -26,6 +26,7 @@ class HopfieldLayerModel(nn.Module):
         association_mask = torch.triu(
             torch.ones((features.shape[1], features.shape[1])), diagonal=1
         ).to(device)
+        association_mask = association_mask.type(torch.bool)
         intermediate = self.hopfield(features, association_mask=association_mask)
 
         for output_layer in self.output_layers:
@@ -146,6 +147,7 @@ class HopfieldLSTM(nn.Module):
         association_mask = torch.triu(
             torch.ones((features.shape[1], features.shape[1])), diagonal=1
         ).to(device)
+        association_mask = association_mask.type(torch.bool)
         # x is of shape batch_size x seq_length x n_features
         attention = self.attention_layer(features, association_mask=association_mask)
         if self.full_attention:
